@@ -5,13 +5,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Newspaper, TrendingUp, Clock, Share2, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, Menu, X, Info, Settings, User as UserIcon, Heart, LogOut } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import { Newspaper, TrendingUp, Clock, Share2, ExternalLink, Menu, X, Settings, User as UserIcon, Heart, LogOut, BookOpen, LayoutGrid, Globe, Cpu, Music, Gamepad2, Palette, FlaskConical, Search } from 'lucide-react';
 import { auth, loginWithGoogle, logout, onAuthStateChanged, db, handleFirestoreError, OperationType, User } from './firebase';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, Timestamp, getDoc } from 'firebase/firestore';
-
-// Initialize Gemini for news generation (mocking a news API for the demo)
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 interface NewsItem {
   id: string;
@@ -26,8 +22,9 @@ const variants = {
   enter: (direction: number) => ({
     x: direction > 0 ? '100%' : '-100%',
     opacity: 0,
-    scale: 0.9,
-    rotateY: direction > 0 ? 45 : -45,
+    scale: 0.95,
+    rotateY: direction > 0 ? 30 : -30,
+    filter: 'blur(10px)',
   }),
   center: {
     zIndex: 1,
@@ -35,27 +32,109 @@ const variants = {
     opacity: 1,
     scale: 1,
     rotateY: 0,
+    filter: 'blur(0px)',
+    transition: {
+      x: { type: "spring", stiffness: 250, damping: 28 },
+      opacity: { duration: 0.3 },
+      scale: { duration: 0.4, ease: "easeOut" },
+      rotateY: { type: "spring", stiffness: 200, damping: 25 },
+      filter: { duration: 0.3 }
+    }
   },
   exit: (direction: number) => ({
     zIndex: 0,
     x: direction < 0 ? '100%' : '-100%',
     opacity: 0,
-    scale: 0.9,
-    rotateY: direction < 0 ? 45 : -45,
+    scale: 0.95,
+    rotateY: direction < 0 ? 30 : -30,
+    filter: 'blur(10px)',
+    transition: {
+      x: { type: "spring", stiffness: 250, damping: 28 },
+      opacity: { duration: 0.2 },
+      filter: { duration: 0.2 }
+    }
   })
 };
 
+const STATIC_NEWS: NewsItem[] = [
+  { 
+    id: '1', 
+    title: 'Esplorazione Urbana: I Segreti delle Grandi Metropoli', 
+    summary: 'Un viaggio attraverso le architetture nascoste e le storie dimenticate delle città più iconiche del mondo, dalla New York sotterranea ai tetti di Parigi.', 
+    category: 'Cultura', 
+    time: '2 ore fa',
+    imageUrl: 'https://picsum.photos/seed/city/1600/900'
+  },
+  { 
+    id: '2', 
+    title: 'Innovazione Sostenibile: Il Futuro del Design', 
+    summary: 'Come i nuovi materiali biodegradabili e le tecniche di stampa 3D stanno rivoluzionando il modo in cui pensiamo agli oggetti quotidiani e all\'arredamento.', 
+    category: 'Tecnologia', 
+    time: '4 ore fa',
+    imageUrl: 'https://picsum.photos/seed/design/1600/900'
+  },
+  { 
+    id: '3', 
+    title: 'Sinfonie Digitali: La Nuova Era della Composizione', 
+    summary: 'Musicisti e programmatori collaborano per creare esperienze sonore immersive che sfidano i confini tra analogico e digitale, portando la musica in una nuova dimensione.', 
+    category: 'Musica', 
+    time: '6 ore fa',
+    imageUrl: 'https://picsum.photos/seed/concert/1600/900'
+  },
+  { 
+    id: '4', 
+    title: 'L\'Arte del Minimalismo nel Ventesimo Secolo', 
+    summary: 'Un\'analisi approfondita di come la semplicità sia diventata una forma d\'espressione potente, influenzando pittura, scultura e stile di vita moderno.', 
+    category: 'Arte', 
+    time: '8 ore fa',
+    imageUrl: 'https://picsum.photos/seed/art/1600/900'
+  },
+  { 
+    id: '5', 
+    title: 'Oltre i Confini: Nuove Scoperte in Astrofisica', 
+    summary: 'Le ultime osservazioni dei telescopi spaziali rivelano dettagli senza precedenti sulla formazione delle galassie e sulla natura della materia oscura.', 
+    category: 'Scienza', 
+    time: '12 ore fa',
+    imageUrl: 'https://picsum.photos/seed/space/1600/900'
+  },
+  { 
+    id: '6', 
+    title: 'Il Fascino dei Videogiochi Indie', 
+    summary: 'Perché i piccoli studi di sviluppo stanno conquistando il cuore dei giocatori con narrazioni profonde e meccaniche di gioco innovative e sperimentali.', 
+    category: 'Gaming', 
+    time: '1 giorno fa',
+    imageUrl: 'https://picsum.photos/seed/gaming/1600/900'
+  }
+];
+
+const CATEGORIES = [
+  { id: 'all', label: 'Tutte', icon: Globe, color: 'bg-indigo-600', border: 'border-indigo-400/30' },
+  { id: 'scienza', label: 'Scienza', icon: FlaskConical, color: 'bg-emerald-600', border: 'border-emerald-400/30' },
+  { id: 'tecnologia', label: 'Tech', icon: Cpu, color: 'bg-blue-600', border: 'border-blue-400/30' },
+  { id: 'musica', label: 'Musica', icon: Music, color: 'bg-purple-600', border: 'border-purple-400/30' },
+  { id: 'gaming', label: 'Gaming', icon: Gamepad2, color: 'bg-orange-600', border: 'border-orange-400/30' },
+  { id: 'arte', label: 'Arte', icon: Palette, color: 'bg-pink-600', border: 'border-pink-400/30' },
+  { id: 'sport', label: 'Sport', icon: TrendingUp, color: 'bg-red-600', border: 'border-red-400/30' },
+  { id: 'politica', label: 'Politica', icon: BookOpen, color: 'bg-slate-700', border: 'border-slate-500/30' },
+];
+
 export default function App() {
-  const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
+  const [newsItems] = useState<NewsItem[]>(STATIC_NEWS);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [direction, setDirection] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [favorites, setFavorites] = useState<Record<string, any>>({});
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const selectedCategoryData = CATEGORIES.find(c => c.id === selectedCategory);
+  const SelectedCategoryIcon = selectedCategoryData?.icon;
 
   // Auth Listener
   useEffect(() => {
@@ -148,385 +227,443 @@ export default function App() {
     }
   };
 
-  const fetchNews = async (isPrefetch = false) => {
-    if (loading && !isPrefetch) return;
-    
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: "Genera una singola notizia flash di oggi in italiano molto interessante. Formato JSON: un oggetto con id, title, summary, category, time, e imageSearchTerm (un termine in inglese per cercare un'immagine correlata).",
-        config: {
-          responseMimeType: "application/json",
-        }
-      });
-      
-      const data = JSON.parse(response.text || '{}');
-      const imageUrl = `https://picsum.photos/seed/${data.imageSearchTerm || Math.random()}/1600/900`;
-      const newItem = { ...data, imageUrl, id: Date.now().toString() };
-      
-      setNewsItems(prev => {
-        // Avoid duplicates if prefetch triggers twice
-        if (prev.some(item => item.title === newItem.title)) return prev;
-        return [...prev, newItem];
-      });
-
-      // Preload image
-      const img = new Image();
-      img.src = imageUrl;
-
-    } catch (err) {
-      console.error("Error fetching news:", err);
-    } finally {
-      if (!isPrefetch) setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-      await fetchNews();
-      setLoading(false);
-      // Prefetch the second one immediately
-      fetchNews(true);
-    };
-    init();
-  }, []);
-
   const paginate = (newDirection: number) => {
     const nextIndex = currentIndex + newDirection;
     if (nextIndex >= 0 && nextIndex < newsItems.length) {
       setDirection(newDirection);
       setCurrentIndex(nextIndex);
-      
-      // If we are moving to the last item, prefetch the next one
-      if (nextIndex === newsItems.length - 1 && !showFavoritesOnly) {
-        fetchNews(true);
-      }
     }
   };
 
   const currentNews = newsItems[currentIndex];
-  const displayedNews = showFavoritesOnly ? Object.values(favorites) : newsItems;
+  const displayedNews = (showFavoritesOnly ? Object.values(favorites) : newsItems)
+    .filter(item => {
+      const matchesCategory = selectedCategory === 'all' || 
+        item.category.toLowerCase().includes(selectedCategory.toLowerCase()) || 
+        selectedCategory.toLowerCase().includes(item.category.toLowerCase());
+      
+      const matchesSearch = !searchQuery || 
+        item.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        item.summary.toLowerCase().includes(searchQuery.toLowerCase());
+
+      return matchesCategory && matchesSearch;
+    });
   const currentItem = displayedNews[currentIndex];
 
   return (
-    <div className="h-screen w-full bg-black overflow-hidden relative flex items-center justify-center font-montserrat text-slate-200 p-5 perspective-1000">
-      {/* Background Layer with Stars and Lights */}
-      <div className="absolute inset-0 z-0 overflow-hidden">
-        <div className="absolute inset-0 bg-black" />
-        
-        {/* Animated Background Lights */}
-        {[
-          { color: 'bg-indigo-600/20', size: 'w-[600px] h-[600px]', initial: { x: -100, y: -100 } },
-          { color: 'bg-blue-600/10', size: 'w-[500px] h-[500px]', initial: { x: '80%', y: '20%' } },
-          { color: 'bg-slate-800/20', size: 'w-[700px] h-[700px]', initial: { x: '20%', y: '70%' } },
-        ].map((light, i) => (
-          <motion.div
-            key={`light-${i}`}
-            initial={light.initial}
-            animate={{
-              x: [light.initial.x, '50%', light.initial.x],
-              y: [light.initial.y, '50%', light.initial.y],
-              scale: [1, 1.2, 1],
-            }}
-            transition={{
-              duration: 15 + i * 5,
-              repeat: Infinity,
-              ease: "linear"
-            }}
-            className={`absolute rounded-full blur-[120px] mix-blend-screen ${light.color} ${light.size}`}
-          />
-        ))}
-
-        {/* Animated Blurred Stars */}
-        {[...Array(25)].map((_, i) => (
-          <motion.div
-            key={`star-${i}`}
-            initial={{ 
-              x: (Math.random() * 90 + 5) + '%', 
-              y: (Math.random() * 90 + 5) + '%',
-              opacity: Math.random() * 0.3 + 0.1,
-              scale: Math.random() * 0.4 + 0.3
-            }}
-            animate={{
-              opacity: [0.1, 0.5, 0.1],
-              scale: [0.3, 0.8, 0.3],
-            }}
-            transition={{
-              duration: 4 + Math.random() * 6,
-              repeat: Infinity,
-              ease: "easeInOut"
-            }}
-            className="absolute w-1 h-1 bg-white/60 rounded-full blur-[1.5px]"
-          />
-        ))}
-      </div>
-
+    <div className="h-screen w-full bg-black overflow-hidden relative flex items-center justify-center font-montserrat text-slate-200">
       <motion.main 
         initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 1.5 }}
-        className="relative z-10 w-full h-full max-w-7xl flex items-center"
+        animate={{ 
+          opacity: 1,
+          scale: isMenuOpen ? 0.96 : 1
+        }}
+        transition={{ 
+          duration: 0.4,
+          ease: [0.16, 1, 0.3, 1] // Custom quintic ease-out
+        }}
+        className="relative z-10 w-full h-full flex items-center"
       >
         <div className="relative w-full h-full group" ref={containerRef}>
-          {/* Top-Right Heart Icon (Add to Favorite) */}
-          {currentItem && (
-            <motion.button
-              initial={{ x: 20, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={() => toggleFavorite(currentItem as NewsItem)}
-              className="absolute top-[30px] right-[30px] z-[100] w-12 h-12 rounded-full bg-white/5 backdrop-blur-md border border-white/10 flex items-center justify-center hover:bg-white/10 transition-all group shadow-2xl"
-            >
-              <Heart className={`w-5 h-5 transition-all duration-300 ${favorites[currentItem.id] ? 'text-pink-500 fill-pink-500 scale-110' : 'text-white/40 group-hover:text-white'}`} />
-            </motion.button>
-          )}
+          {/* Backdrop Blur Overlay when Menu is Open */}
+          <AnimatePresence>
+            {isMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  setIsCategoryMenuOpen(false);
+                }}
+                className="absolute inset-0 bg-black/40 z-[95]"
+              />
+            )}
+          </AnimatePresence>
 
-          {/* Fixed Floating Menu - Bottom Right */}
-          <div className="absolute bottom-[30px] right-[30px] z-[100]">
+          {/* Fixed Menu Button at Bottom Right */}
+          <div className="absolute bottom-10 right-10 z-[100]">
             <div className="relative">
               <AnimatePresence>
                 {isMenuOpen && (
                   <motion.div
-                    initial="closed"
-                    animate="open"
-                    exit="closed"
                     variants={{
-                      open: {
+                      hidden: { opacity: 0 },
+                      show: {
+                        opacity: 1,
                         transition: {
-                          staggerChildren: 0.1,
-                          delayChildren: 0.1
+                          staggerChildren: 0.08,
+                          delayChildren: 0.05
                         }
                       },
-                      closed: {
+                      exit: {
+                        opacity: 0,
                         transition: {
                           staggerChildren: 0.05,
                           staggerDirection: -1
                         }
                       }
                     }}
-                    className="absolute bottom-full right-0 mb-6 flex flex-col items-end gap-4"
+                    initial="hidden"
+                    animate="show"
+                    exit="exit"
+                    className="absolute bottom-full right-0 mb-6 flex flex-col gap-4"
                   >
                     {[
-                      { icon: RefreshCw, label: 'Aggiorna', action: () => fetchNews() },
                       { 
-                        icon: user ? LogOut : UserIcon, 
-                        label: user ? 'Logout' : 'Account', 
-                        action: user ? logout : loginWithGoogle 
+                        icon: LayoutGrid, 
+                        label: 'Categorie', 
+                        action: () => setIsCategoryMenuOpen(!isCategoryMenuOpen)
                       },
                       { 
                         icon: Heart, 
-                        label: showFavoritesOnly ? 'Tutte le News' : 'Preferite (24h)', 
-                        action: () => { setShowFavoritesOnly(!showFavoritesOnly); setCurrentIndex(0); } 
+                        label: showFavoritesOnly ? 'Tutte' : 'Preferiti', 
+                        action: () => setShowFavoritesOnly(!showFavoritesOnly)
                       },
                       { 
                         icon: Share2, 
                         label: 'Condividi', 
                         action: () => {
-                          if (navigator.share && currentItem) {
-                            navigator.share({
-                              title: currentItem.title,
-                              text: currentItem.summary,
-                              url: window.location.href
-                            }).catch(console.error);
+                          if (displayedNews[currentIndex]) {
+                            navigator.share?.({
+                              title: displayedNews[currentIndex].title,
+                              url: displayedNews[currentIndex].url
+                            }).catch(() => {});
                           }
                         } 
                       },
                       { 
                         icon: ExternalLink, 
-                        label: 'Fonte Originale', 
+                        label: 'Vai al link', 
                         action: () => {
-                          // Placeholder for future source link
-                          window.open('https://news.google.com', '_blank');
+                          if (displayedNews[currentIndex]) {
+                            window.open(displayedNews[currentIndex].url, '_blank');
+                          }
                         } 
                       },
+                      { 
+                        icon: user ? LogOut : UserIcon, 
+                        label: user ? 'Logout' : 'Profilo', 
+                        action: user ? logout : loginWithGoogle 
+                      },
                     ].map((item, i) => (
-                      <motion.div
-                        key={i}
+                      <motion.div 
+                        key={i} 
                         variants={{
-                          open: { 
+                          hidden: { opacity: 0, scale: 0.5, y: 20 },
+                          show: { 
                             opacity: 1, 
-                            x: 0, 
-                            scale: 1,
-                            transition: { type: "spring", stiffness: 300, damping: 20 }
+                            scale: 1, 
+                            y: 0,
+                            transition: { type: "spring", stiffness: 300, damping: 25 }
                           },
-                          closed: { 
+                          exit: { 
                             opacity: 0, 
-                            x: 20, 
-                            scale: 0.5,
+                            scale: 0.5, 
+                            y: 20,
                             transition: { duration: 0.2 }
                           }
                         }}
-                        className="flex items-center gap-3"
+                        animate={isSearchOpen && item.label !== 'Cerca' ? { opacity: 0, scale: 0.8, pointerEvents: 'none' } : 'show'}
+                        className="relative group flex justify-end"
                       >
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/40 pointer-events-none whitespace-nowrap bg-black/20 px-2 py-1 rounded-md backdrop-blur-sm border border-white/5">
-                          {item.label}
-                        </span>
                         <motion.button
-                          whileHover={{ scale: 1.15, backgroundColor: 'rgba(255,255,255,0.15)' }}
+                          whileHover={{ scale: 1.15, x: -5 }}
                           whileTap={{ scale: 0.9 }}
-                          onClick={() => { item.action(); setIsMenuOpen(false); }}
-                          className="w-12 h-12 rounded-full bg-slate-900/90 backdrop-blur-2xl border border-white/10 flex items-center justify-center text-white/80 hover:text-white shadow-[0_10px_30px_rgba(0,0,0,0.5)] transition-colors"
+                          onClick={() => { item.action(); if (item.label !== 'Categorie') setIsMenuOpen(false); }}
+                          className={`w-12 h-12 rounded-full flex items-center justify-center backdrop-blur-xl border border-white/20 shadow-2xl transition-all relative ${
+                            (item.label === 'Preferiti' && showFavoritesOnly) 
+                              ? 'bg-indigo-500/40 border-indigo-400/50 text-white' 
+                              : (item.label === 'Categorie' && isCategoryMenuOpen)
+                                ? `${selectedCategoryData?.color.replace('bg-', 'bg-')}/40 border-indigo-400/50 text-white`
+                                : 'bg-white/10 text-white/80 hover:bg-white/20 hover:text-white'
+                          } ${isCategoryMenuOpen && item.label !== 'Categorie' ? 'opacity-20' : 'opacity-100'}`}
                         >
-                          <item.icon className="w-5 h-5" />
+                          <motion.div layoutId={item.label === 'Preferiti' && showFavoritesOnly ? "active-fav-icon" : undefined}>
+                            <item.icon className="w-5 h-5" />
+                          </motion.div>
+                          <span className="absolute right-full mr-4 px-3 py-1 rounded-lg bg-slate-900/90 text-white text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-white/10">
+                            {item.label}
+                          </span>
                         </motion.button>
+
+                        {item.label === 'Categorie' && (
+                          <AnimatePresence>
+                            {isCategoryMenuOpen && (
+                              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                                {CATEGORIES.map((cat, ci, arr) => {
+                                  const angle = (Math.PI / 2) + (Math.PI * (ci / (arr.length - 1))); // From 90 to 270 degrees
+                                  const radius = 110;
+                                  const x = Math.cos(angle) * radius;
+                                  const y = Math.sin(angle) * radius;
+                                  
+                                  return (
+                                    <motion.button
+                                      key={cat.id}
+                                      initial={{ x: 0, y: 0, opacity: 0, scale: 0 }}
+                                      animate={{ x, y, opacity: 1, scale: 1 }}
+                                      exit={{ x: 0, y: 0, opacity: 0, scale: 0 }}
+                                      transition={{ 
+                                        delay: ci * 0.03, 
+                                        type: 'spring', 
+                                        stiffness: 350, 
+                                        damping: 25,
+                                        mass: 0.8
+                                      }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedCategory(cat.id);
+                                        setIsCategoryMenuOpen(false);
+                                        setIsMenuOpen(false);
+                                        setCurrentIndex(0);
+                                      }}
+                                      className={`absolute pointer-events-auto w-[42px] h-[42px] rounded-full flex items-center justify-center backdrop-blur-xl border border-white/20 shadow-xl transition-all group/cat ${
+                                        selectedCategory === cat.id 
+                                          ? `${cat.color} text-white` 
+                                          : 'bg-white/20 text-white/80 hover:bg-white/30 hover:text-white'
+                                      }`}
+                                      style={{ left: '50%', top: '50%', marginLeft: '-21px', marginTop: '-21px' }}
+                                    >
+                                      <motion.div layoutId={selectedCategory === cat.id ? "active-cat-icon" : undefined}>
+                                        <cat.icon className="w-4 h-4" />
+                                      </motion.div>
+                                      <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-slate-900/90 text-white text-[8px] font-medium opacity-0 group-hover/cat:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+                                        {cat.label}
+                                      </span>
+                                    </motion.button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </AnimatePresence>
+                        )}
                       </motion.div>
                     ))}
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              <motion.button
-                whileHover={{ scale: 1.1, rotate: 5 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className={`w-14 h-14 rounded-full flex items-center justify-center border border-white/10 transition-all shadow-2xl backdrop-blur-md ${isMenuOpen ? 'bg-white/20 border-white/40' : 'bg-white/5 hover:bg-white/10 opacity-60 hover:opacity-100'}`}
-              >
-                {isMenuOpen ? (
-                  <X className="w-6 h-6 text-white" />
-                ) : (
-                  <Menu className="w-6 h-6 text-white" />
+              <AnimatePresence>
+                {isMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, x: 20, scale: 0.5 }}
+                    animate={{ opacity: 1, x: -70, scale: 1 }}
+                    exit={{ opacity: 0, x: 20, scale: 0.5 }}
+                    className="absolute top-1/2 -translate-y-1/2 right-0 flex items-center"
+                  >
+                    {isSearchOpen ? (
+                      <motion.div 
+                        layoutId="search-bubble"
+                        className="h-12 bg-white/10 backdrop-blur-xl border border-white/20 rounded-full flex items-center px-4 shadow-2xl w-[260px]"
+                      >
+                        <Search className="w-5 h-5 text-white/60 mr-2 shrink-0" />
+                        <input
+                          ref={searchInputRef}
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => {
+                            setSearchQuery(e.target.value);
+                            setCurrentIndex(0);
+                          }}
+                          placeholder="Cerca articoli..."
+                          className="bg-transparent border-none outline-none text-white text-sm w-full placeholder:text-white/40"
+                          onBlur={() => {
+                            if (!searchQuery) setIsSearchOpen(false);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') setIsMenuOpen(false);
+                            if (e.key === 'Escape') {
+                              setIsSearchOpen(false);
+                              setSearchQuery('');
+                            }
+                          }}
+                        />
+                        {searchQuery && (
+                          <button 
+                            onClick={() => {
+                              setSearchQuery('');
+                              searchInputRef.current?.focus();
+                            }}
+                            className="ml-2 text-white/40 hover:text-white transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </motion.div>
+                    ) : (
+                      <motion.button
+                        layoutId="search-bubble"
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => {
+                          setIsSearchOpen(true);
+                          setTimeout(() => searchInputRef.current?.focus(), 100);
+                        }}
+                        className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-md border border-white/10 text-white flex items-center justify-center shadow-lg"
+                      >
+                        <Search className="w-5 h-5" />
+                      </motion.button>
+                    )}
+                  </motion.div>
                 )}
+              </AnimatePresence>
+
+              <AnimatePresence>
+                {selectedCategory !== 'all' && !isMenuOpen && (
+                  <motion.button
+                    initial={{ opacity: 0, y: 20, scale: 0.5 }}
+                    animate={{ opacity: 1, y: -135, scale: 1 }}
+                    exit={{ opacity: 0, y: 20, scale: 0.5 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => {
+                      setSelectedCategory('all');
+                      setCurrentIndex(0);
+                    }}
+                    className={`absolute bottom-0 right-1 w-12 h-12 rounded-full text-white flex items-center justify-center shadow-lg border z-[90] ${selectedCategoryData?.color || 'bg-indigo-600'} ${selectedCategoryData?.border || 'border-indigo-400/30'}`}
+                  >
+                    <motion.div layoutId="active-cat-icon">
+                      {SelectedCategoryIcon && <SelectedCategoryIcon className="w-5 h-5" />}
+                    </motion.div>
+                  </motion.button>
+                )}
+              </AnimatePresence>
+
+              <AnimatePresence>
+                {!isMenuOpen && (
+                  <motion.button
+                    initial={{ opacity: 0, y: 20, scale: 0.5 }}
+                    animate={{ opacity: 1, y: -75, scale: 1 }}
+                    exit={{ opacity: 0, y: 20, scale: 0.5 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => {
+                      if (!user) {
+                        loginWithGoogle();
+                        return;
+                      }
+                      if (currentItem) {
+                        toggleFavorite(currentItem as NewsItem);
+                      }
+                    }}
+                    className={`absolute bottom-0 right-1 w-12 h-12 rounded-full flex items-center justify-center shadow-lg border z-[90] transition-all ${
+                      currentItem && favorites[currentItem.id]
+                        ? 'bg-pink-600 border-pink-400/30 text-white' 
+                        : 'bg-white/10 border-white/10 text-white/60 hover:text-white hover:bg-white/20'
+                    } ${!user ? 'opacity-40 grayscale-[0.5]' : 'opacity-100'}`}
+                  >
+                    <motion.div layoutId="active-fav-icon">
+                      <Heart className={`w-5 h-5 ${currentItem && favorites[currentItem.id] ? 'fill-white' : ''}`} />
+                    </motion.div>
+                  </motion.button>
+                )}
+              </AnimatePresence>
+
+              <motion.button
+                whileHover={{ scale: 1.1, rotate: isMenuOpen ? -90 : 90 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => {
+                  setIsMenuOpen(!isMenuOpen);
+                  if (isMenuOpen) {
+                    setIsCategoryMenuOpen(false);
+                    setIsSearchOpen(false);
+                  }
+                }}
+                className={`w-14 h-14 rounded-full flex items-center justify-center border border-white/10 transition-all shadow-2xl backdrop-blur-md z-[100] ${isMenuOpen ? 'bg-white/20 border-white/40' : 'bg-white/5 hover:bg-white/10 opacity-60 hover:opacity-100'}`}
+              >
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={isMenuOpen ? 'close' : 'menu'}
+                    initial={{ opacity: 0, rotate: -90 }}
+                    animate={{ opacity: 1, rotate: 0 }}
+                    exit={{ opacity: 0, rotate: 90 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    {isMenuOpen ? (
+                      <X className="w-6 h-6 text-white" />
+                    ) : (
+                      <Menu className="w-6 h-6 text-white" />
+                    )}
+                  </motion.div>
+                </AnimatePresence>
               </motion.button>
             </div>
           </div>
 
-          <div className="absolute -inset-1 bg-gradient-to-r from-pink-500 via-cyan-500 to-indigo-500 rounded-[2.5rem] blur-lg opacity-10 group-hover:opacity-30 transition duration-1000 animate-tilt"></div>
-          
-          <div className="relative w-full h-full bg-slate-900/20 backdrop-blur-3xl rounded-[2.5rem] overflow-hidden border border-slate-700/20 shadow-[0_0_80px_rgba(0,0,0,0.6)] flex flex-col">
-            <div className="absolute inset-0 pointer-events-none border-[3.5px] border-t-slate-100/40 border-l-slate-100/40 border-b-black/80 border-r-black/80 rounded-[2.5rem] z-30 shadow-[inset_0_0_15px_rgba(255,255,255,0.05)]"></div>
-            
-            <div className="absolute inset-0 pointer-events-none rounded-[2.5rem] overflow-hidden z-40">
-              {/* Reflection removed from here to be moved inside the news item */}
-            </div>
-            
+          <div className="relative w-full h-full overflow-hidden flex flex-col bg-black">
             <div className="flex-1 relative overflow-hidden">
-              <AnimatePresence initial={false} custom={direction} mode="wait">
-                {loading && displayedNews.length === 0 ? (
-                  <motion.div 
-                    key="loading"
-                    className="absolute inset-0 flex items-center justify-center"
-                  >
-                    <div className="w-12 h-12 border-2 border-indigo-500/10 border-t-indigo-500 rounded-full animate-spin" />
-                  </motion.div>
-                ) : error && displayedNews.length === 0 ? (
-                  <motion.div 
-                    key="error"
-                    className="absolute inset-0 flex items-center justify-center p-10"
-                  >
-                    <p className="text-slate-500 font-light italic text-sm">Segnale disturbato...</p>
-                  </motion.div>
-                ) : (
-                  currentItem && (
-                    <motion.div
-                      key={currentItem.id}
-                      custom={direction}
-                      variants={variants}
-                      initial="enter"
-                      animate="center"
-                      exit="exit"
-                      drag="x"
-                      dragConstraints={{ left: 0, right: 0 }}
-                      dragElastic={0.8}
-                      onDragEnd={(e, { offset, velocity }) => {
-                        const swipe = Math.abs(offset.x) > 100 || Math.abs(velocity.x) > 500;
-                        if (swipe) {
-                          const nextIndex = currentIndex + (offset.x > 0 ? -1 : 1);
-                          if (nextIndex >= 0 && nextIndex < displayedNews.length) {
-                            setDirection(offset.x > 0 ? -1 : 1);
-                            setCurrentIndex(nextIndex);
-                            
-                            // Prefetch if near the end
-                            if (nextIndex === displayedNews.length - 1 && !showFavoritesOnly) {
-                              fetchNews(true);
+              <AnimatePresence initial={false} custom={direction} mode="popLayout">
+                {currentItem && (
+                      <motion.div
+                        key={currentItem.id}
+                        custom={direction}
+                        variants={variants}
+                        initial="enter"
+                        animate="center"
+                        exit="exit"
+                        drag="x"
+                        dragConstraints={{ left: 0, right: 0 }}
+                        dragElastic={0.8}
+                        onDragEnd={(e, { offset, velocity }) => {
+                          const swipe = Math.abs(offset.x) > 50 || Math.abs(velocity.x) > 200;
+                          if (swipe) {
+                            const nextIndex = currentIndex + (offset.x > 0 ? -1 : 1);
+                            if (nextIndex >= 0 && nextIndex < displayedNews.length) {
+                              setDirection(offset.x > 0 ? -1 : 1);
+                              setCurrentIndex(nextIndex);
                             }
                           }
-                        }
-                      }}
-                      transition={{
-                        x: { type: "spring", stiffness: 450, damping: 35 },
-                        opacity: { duration: 0.15 },
-                        scale: { duration: 0.2 },
-                        rotateY: { duration: 0.2 }
-                      }}
-                      className="absolute inset-0 flex flex-col cursor-grab active:cursor-grabbing preserve-3d"
-                    >
-                      {/* Dynamic Reflection - Triggers only on entry */}
-                      <motion.div 
-                        initial={{ left: '-100%', top: '-100%' }}
-                        animate={{ left: '200%', top: '200%' }}
-                        transition={{ duration: 1.2, ease: "easeInOut", delay: 0.3 }}
-                        className="absolute w-[40%] h-[300%] bg-gradient-to-r from-transparent via-white/40 to-transparent rotate-[35deg] blur-md z-40 pointer-events-none"
-                      />
+                        }}
+                        transition={{
+                          x: { type: "spring", stiffness: 300, damping: 30 },
+                          opacity: { duration: 0.2 }
+                        }}
+                        className="absolute inset-0 flex flex-col cursor-grab active:cursor-grabbing preserve-3d"
+                      >
+                        <div className="absolute inset-0 z-0">
+                          <img 
+                            src={currentItem.imageUrl} 
+                            alt={currentItem.title}
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover"
+                          />
+                          {/* Vignette Effect */}
+                          <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_20%,rgba(0,0,0,0.4)_70%,rgba(0,0,0,0.9)_100%)] z-10 pointer-events-none" />
+                          {/* Bottom Gradient for Text Readability */}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent z-20" />
+                        </div>
 
-                      <div className="absolute inset-0 z-0">
-                        <img 
-                          src={currentItem.imageUrl} 
-                          alt={currentItem.title}
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover grayscale-[20%] contrast-[110%]"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent z-10" />
-                      </div>
-
-                      <div className="relative z-20 flex-1 flex flex-col justify-end p-10 md:p-20">
+                      <div className="relative z-20 flex-1 flex flex-col justify-end p-8 md:p-16">
                         <motion.div 
-                          initial={{ y: 30, opacity: 0 }}
+                          initial={{ y: 20, opacity: 0 }}
                           animate={{ y: 0, opacity: 1 }}
-                          transition={{ delay: 0.2, duration: 0.8 }}
-                          className="max-w-2xl space-y-4"
+                          transition={{ duration: 0.4 }}
+                          className="max-w-2xl space-y-3"
                         >
-                          <div className="flex items-center gap-4">
-                            <h2 className="text-2xl md:text-3xl font-extrabold text-white leading-tight tracking-tight drop-shadow-2xl font-montserrat uppercase">
-                              {currentItem.title}
-                            </h2>
-                          </div>
-                          <p className="text-sm md:text-base text-slate-300 font-light leading-relaxed drop-shadow-lg font-montserrat">
+                          <h2 className="text-3xl md:text-4xl font-black text-white leading-tight tracking-tighter uppercase drop-shadow-2xl">
+                            {currentItem.title}
+                          </h2>
+                          <p className="text-base md:text-lg text-white/90 font-medium leading-snug drop-shadow-lg line-clamp-3">
                             {currentItem.summary}
                           </p>
                         </motion.div>
                       </div>
                     </motion.div>
-                  )
                 )}
               </AnimatePresence>
             </div>
-
-            {/* Loading overlay for subsequent fetches */}
-            {loading && newsItems.length > 0 && (
-              <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-                <div className="w-10 h-10 border-2 border-white/10 border-t-white rounded-full animate-spin" />
-              </div>
-            )}
           </div>
         </div>
       </motion.main>
 
       <style dangerouslySetInnerHTML={{ __html: `
-        @keyframes tilt {
-          0%, 50%, 100% { transform: rotate(0deg); }
-          25% { transform: rotate(0.1deg); }
-          75% { transform: rotate(-0.1deg); }
-        }
-        .animate-tilt {
-          animation: tilt 15s infinite linear;
-        }
         .perspective-1000 {
           perspective: 1000px;
         }
         .preserve-3d {
           transform-style: preserve-3d;
-        }
-        .bg-silver-metallic {
-          background: linear-gradient(135deg, #bdc3c7 0%, #2c3e50 50%, #bdc3c7 100%);
-          background-size: 200% 200%;
-          animation: metallic-shine 3s linear infinite;
-        }
-        @keyframes metallic-shine {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
         }
       `}} />
     </div>
