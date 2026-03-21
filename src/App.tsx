@@ -257,7 +257,7 @@ export default function App() {
             id: `${feed.name}-${idx}-${Date.now()}`,
             title: title,
             url: link,
-            summary: desc.replace(/<[^>]*>?/gm, '').substring(0, 150) + "...",
+            summary: desc.replace(/<[^>]*>?/gm, '').substring(0, 800) + "...",
             category: feed.cat,
             source: feed.name,
             imageUrl: thumb,
@@ -282,7 +282,7 @@ export default function App() {
     // 1. First step: Load ~20-30 news items immediately (first 3 reliable feeds)
     const initialFeeds = FEEDS.slice(0, 3);
     const initialResults = await Promise.all(initialFeeds.map(feed => fetchSingleFeed(feed)));
-    const initialItems = initialResults.flat();
+    const initialItems = initialResults.flat().sort(() => Math.random() - 0.5);
     
     setNewsItems(initialItems);
     setLoading(false); // Stop main loading spinner after first step
@@ -300,7 +300,7 @@ export default function App() {
         setNewsItems(prev => {
           const existingIds = new Set(prev.map(item => item.id));
           const newItems = items.filter(item => !existingIds.has(item.id));
-          return [...prev, ...newItems];
+          return [...prev, ...newItems].sort(() => Math.random() - 0.5);
         });
         return items;
       }));
@@ -380,7 +380,7 @@ export default function App() {
   const currentItem = displayedNews[currentIndex];
 
   return (
-    <div className="h-screen w-full bg-black overflow-hidden relative flex items-center justify-center font-montserrat text-slate-200">
+    <div className="h-svh w-full bg-black overflow-hidden relative flex items-center justify-center font-montserrat text-slate-200">
       <AnimatePresence>
         {showSplash && (
           <motion.div
@@ -424,9 +424,9 @@ export default function App() {
               >
                 {/* Logo Placeholder - User should upload their logo as /logo.png */}
                 <img 
-                  src="https://i.imgur.com/8W0Xm8R.png" 
+                  src="/logo completo.png" 
                   alt="SmartInfo Logo" 
-                  className="w-64 md:w-80 h-auto drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]"
+                  className="w-72 md:w-96 h-auto drop-shadow-[0_0_50px_rgba(255,255,255,0.4)]"
                   referrerPolicy="no-referrer"
                   onError={(e) => {
                     // Fallback if image fails
@@ -484,8 +484,27 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          {/* Fixed Menu Button at Bottom Right */}
-          <div className="absolute bottom-10 right-10 z-[100]">
+          {/* Fixed Buttons at Bottom Right */}
+          <div className="absolute bottom-10 right-10 z-[100] flex items-center gap-4">
+            <AnimatePresence>
+              {!isMenuOpen && (
+                <motion.button
+                  initial={{ opacity: 0, x: 20, scale: 0.5 }}
+                  animate={{ opacity: 1, x: 0, scale: 1 }}
+                  exit={{ opacity: 0, x: 20, scale: 0.5 }}
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => {
+                    if (displayedNews[currentIndex]) {
+                      window.open(displayedNews[currentIndex].url, '_blank');
+                    }
+                  }}
+                  className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-md border border-white/10 text-white flex items-center justify-center shadow-lg"
+                >
+                  <ExternalLink className="w-5 h-5" />
+                </motion.button>
+              )}
+            </AnimatePresence>
             <div className="relative">
               <AnimatePresence>
                 {isMenuOpen && (
@@ -495,14 +514,15 @@ export default function App() {
                       show: {
                         opacity: 1,
                         transition: {
-                          staggerChildren: 0.1,
-                          delayChildren: 0.1
+                          staggerChildren: 0.08,
+                          delayChildren: 0.05,
+                          ease: [0.16, 1, 0.3, 1]
                         }
                       },
                       exit: {
                         opacity: 0,
                         transition: {
-                          staggerChildren: 0.05,
+                          staggerChildren: 0.04,
                           staggerDirection: -1
                         }
                       }
@@ -550,15 +570,6 @@ export default function App() {
                         } 
                       },
                       { 
-                        icon: ExternalLink, 
-                        label: 'Vai al link', 
-                        action: () => {
-                          if (displayedNews[currentIndex]) {
-                            window.open(displayedNews[currentIndex].url, '_blank');
-                          }
-                        } 
-                      },
-                      { 
                         icon: user ? LogOut : UserIcon, 
                         label: user ? 'Logout' : 'Profilo', 
                         isActive: !!user,
@@ -568,23 +579,24 @@ export default function App() {
                         <motion.div 
                           key={i} 
                           variants={{
-                            hidden: { opacity: 0, scale: 0.3, x: 50, rotate: -15 },
+                            hidden: { opacity: 0, scale: 0.4, y: 40, x: 20, rotate: -20 },
                             show: { 
                               opacity: 1, 
                               scale: 1, 
+                              y: 0,
                               x: 0,
                               rotate: 0,
                               transition: { 
                                 type: "spring", 
-                                stiffness: 400, 
-                                damping: 28,
-                                mass: 0.8
+                                stiffness: 500, 
+                                damping: 30,
+                                mass: 0.5
                               }
                             },
                             exit: { 
                               opacity: 0, 
-                              scale: 0.5, 
-                              x: 20,
+                              scale: 0.4, 
+                              y: 20,
                               transition: { duration: 0.2, ease: "easeIn" }
                             }
                           }}
@@ -789,8 +801,10 @@ export default function App() {
               </AnimatePresence>
 
               <motion.button
-                whileHover={{ scale: 1.1, rotate: isMenuOpen ? -90 : 90 }}
-                whileTap={{ scale: 0.9 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                animate={{ rotate: isMenuOpen ? -60 : 0 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
                 onClick={() => {
                   setIsMenuOpen(!isMenuOpen);
                   if (isMenuOpen) {
@@ -798,20 +812,21 @@ export default function App() {
                     setIsSearchOpen(false);
                   }
                 }}
-                className={`w-14 h-14 rounded-full flex items-center justify-center border border-white/10 transition-all shadow-2xl backdrop-blur-md z-[100] ${isMenuOpen ? 'bg-white/20 border-white/40' : 'bg-white/5 hover:bg-white/10 opacity-60 hover:opacity-100'}`}
+                className={`w-14 h-14 rounded-full flex items-center justify-center border transition-all shadow-2xl backdrop-blur-md z-[100] p-0 overflow-hidden ${isMenuOpen ? 'bg-white/20 border-white/40' : 'bg-white/5 border-white/10 hover:bg-white/10 opacity-90 hover:opacity-100'}`}
               >
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={isMenuOpen ? 'close' : 'menu'}
-                    initial={{ opacity: 0, rotate: -90 }}
-                    animate={{ opacity: 1, rotate: 0 }}
-                    exit={{ opacity: 0, rotate: 90 }}
+                    initial={{ opacity: 0, scale: 0.5 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.5 }}
                     transition={{ duration: 0.2 }}
+                    className="w-full h-full flex items-center justify-center"
                   >
                     {isMenuOpen ? (
                       <X className="w-6 h-6 text-white" />
                     ) : (
-                      <Menu className="w-6 h-6 text-white" />
+                      <img src="/logo.png" className="w-10 h-10 object-contain" alt="Logo" />
                     )}
                   </motion.div>
                 </AnimatePresence>
@@ -823,10 +838,14 @@ export default function App() {
             <div className="flex-1 relative overflow-hidden">
               {loading && newsItems.length === 0 ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black z-50">
-                  <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                    className="w-12 h-12 border-4 border-white/10 border-t-indigo-500 rounded-full mb-4 shadow-[0_0_20px_rgba(99,102,241,0.4)]"
+                  <motion.img
+                    src="/logo completo.png"
+                    animate={{ 
+                      scale: [1, 1.05, 1],
+                      opacity: [0.6, 1, 0.6]
+                    }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                    className="w-48 md:w-64 h-auto drop-shadow-[0_0_30px_rgba(255,255,255,0.2)] mb-8"
                   />
                   <p className="text-white/40 font-bold uppercase tracking-widest text-xs animate-pulse">Caricamento Notizie...</p>
                 </div>
@@ -872,7 +891,7 @@ export default function App() {
                           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent z-20" />
                         </div>
 
-                      <div className="relative z-20 flex-1 flex flex-col justify-end p-8 md:p-16 pb-28 md:pb-36">
+                      <div className="relative z-20 flex-1 flex flex-col justify-end p-8 md:p-16 pt-0 pb-28 md:pb-36 mt-0">
                         <motion.div 
                           initial="hidden"
                           animate="visible"
@@ -925,7 +944,7 @@ export default function App() {
                             className="relative"
                           >
                             <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-pink-500 to-purple-600 shadow-[0_0_10px_rgba(236,72,153,0.5)]" />
-                            <p className="text-base md:text-xl text-white/90 font-medium leading-relaxed pl-6 line-clamp-3 drop-shadow-md italic">
+                            <p className="text-lg md:text-xl text-white/90 font-medium leading-relaxed pl-6 drop-shadow-md italic line-clamp-8 max-w-md">
                               {currentItem.summary}
                             </p>
                           </motion.div>
@@ -960,28 +979,6 @@ export default function App() {
                             </span>
                           </motion.div>
 
-                          <motion.a
-                            href={currentItem.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            variants={{
-                              hidden: { opacity: 0, y: 20 },
-                              visible: { 
-                                opacity: 1, 
-                                y: 0,
-                                transition: { delay: 0.8, duration: 0.4 }
-                              }
-                            }}
-                            className="inline-flex items-center gap-3 px-8 py-4 rounded-full bg-indigo-500 text-white font-black uppercase text-xs tracking-[0.2em] shadow-[0_0_30px_rgba(99,102,241,0.4)] hover:bg-indigo-600 transition-all active:scale-95 group w-fit"
-                          >
-                            Leggi di più
-                            <motion.span
-                              animate={{ x: [0, 5, 0] }}
-                              transition={{ duration: 1.5, repeat: Infinity }}
-                            >
-                              →
-                            </motion.span>
-                          </motion.a>
                         </motion.div>
                       </div>
                     </motion.div>
