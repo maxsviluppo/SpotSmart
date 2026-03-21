@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Newspaper, TrendingUp, Clock, Share2, ExternalLink, Menu, X, Settings, User as UserIcon, Heart, LogOut, BookOpen, LayoutGrid, Globe, Cpu, Music, Gamepad2, Palette, FlaskConical, Search, RefreshCw } from 'lucide-react';
+import { Newspaper, TrendingUp, Clock, Share2, ExternalLink, Menu, X, Settings, User as UserIcon, Heart, LogOut, BookOpen, LayoutGrid, Globe, Cpu, Music, Gamepad2, Palette, FlaskConical, Search, RefreshCw, Info } from 'lucide-react';
 import { auth, loginWithGoogle, logout, onAuthStateChanged, db, handleFirestoreError, OperationType, User } from './firebase';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, Timestamp, getDoc } from 'firebase/firestore';
 
@@ -100,6 +100,8 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [showCookieBanner, setShowCookieBanner] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const splashBg = useMemo(() => `https://picsum.photos/seed/${Math.random()}/1920/1080`, []);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -110,6 +112,10 @@ export default function App() {
 
   useEffect(() => {
     const timer = setTimeout(() => setShowSplash(false), 3500);
+    const consent = localStorage.getItem('cookieConsent');
+    if (!consent) {
+      setTimeout(() => setShowCookieBanner(true), 4000);
+    }
     return () => clearTimeout(timer);
   }, []);
 
@@ -424,8 +430,8 @@ export default function App() {
               >
                 {/* Logo Placeholder - User should upload their logo as /logo.png */}
                 <img 
-                  src="/logo completo.png" 
-                  alt="SmartInfo Logo" 
+                  src="/spotsmartcompleto.png" 
+                  alt="SpotSmart Logo" 
                   className="w-72 md:w-96 h-auto drop-shadow-[0_0_50px_rgba(255,255,255,0.4)]"
                   referrerPolicy="no-referrer"
                   onError={(e) => {
@@ -537,6 +543,11 @@ export default function App() {
                         icon: RefreshCw, 
                         label: 'Aggiorna', 
                         action: fetchAllFeeds 
+                      },
+                      { 
+                        icon: Info, 
+                        label: 'Info & Privacy', 
+                        action: () => setIsInfoOpen(true)
                       },
                       { 
                         icon: LayoutGrid, 
@@ -839,7 +850,7 @@ export default function App() {
               {loading && newsItems.length === 0 ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black z-50">
                   <motion.img
-                    src="/logo completo.png"
+                    src="/spotsmartcompleto.png"
                     animate={{ 
                       scale: [1, 1.05, 1],
                       opacity: [0.6, 1, 0.6]
@@ -1041,6 +1052,127 @@ export default function App() {
           transform-style: preserve-3d;
         }
       `}} />
+
+      {/* Info Modal */}
+      <AnimatePresence>
+        {isInfoOpen && (
+          <motion.div
+            initial={{ opacity: 0, backdropFilter: 'blur(0px)' }}
+            animate={{ opacity: 1, backdropFilter: 'blur(10px)' }}
+            exit={{ opacity: 0, backdropFilter: 'blur(0px)' }}
+            className="fixed inset-0 z-[300] bg-black/80 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="w-full max-w-2xl max-h-[85vh] bg-slate-900/90 border border-white/10 rounded-3xl overflow-hidden shadow-2xl flex flex-col"
+            >
+              <div className="p-6 md:p-8 flex items-center justify-between border-b border-white/5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
+                    <Info className="w-5 h-5 text-indigo-400" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Info & Privacy</h3>
+                </div>
+                <button 
+                  onClick={() => setIsInfoOpen(false)}
+                  className="w-10 h-10 rounded-full hover:bg-white/5 flex items-center justify-center transition-colors"
+                >
+                  <X className="w-6 h-6 text-white/40" />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 scrollbar-hide focus-visible:outline-none">
+                <section>
+                  <h4 className="text-indigo-400 font-bold uppercase text-xs tracking-widest mb-4">Informazioni Legali</h4>
+                  <div className="space-y-4 text-white/60 text-sm leading-relaxed">
+                    <p>
+                      <strong>SpotSmart</strong> (spotsmart.it) è un'applicazione ideata e progettata da <strong>Castro Massimo</strong>, responsabile del trattamento e della conservazione dei dati personali.
+                    </p>
+                    <p>
+                      Email di contatto: <a href="mailto:castromassimo@gmail.com" className="text-indigo-400 hover:underline">castromassimo@gmail.com</a>
+                    </p>
+                  </div>
+                </section>
+
+                <section>
+                  <h4 className="text-indigo-400 font-bold uppercase text-xs tracking-widest mb-4">GDPR & Privacy</h4>
+                  <div className="space-y-4 text-white/60 text-sm leading-relaxed">
+                    <p>
+                      I dati degli utenti (preferiti e profili) sono conservati esclusivamente presso i server protetti di <strong>Firebase (Google Cloud)</strong> nel pieno rispetto delle normative vigenti.
+                    </p>
+                    <p>
+                      Il periodo di conservazione dei dati è limitato al tempo strettamente necessario per l'erogazione del servizio o come previsto dalle norme di legge sulla conservazione dei dati digitali.
+                    </p>
+                    <p>
+                      Gli utenti hanno il diritto in qualsiasi momento di richiedere la visione, la modifica o la cancellazione dei propri dati scrivendo all'indirizzo email sopra indicato.
+                    </p>
+                  </div>
+                </section>
+
+                <section>
+                  <h4 className="text-indigo-400 font-bold uppercase text-xs tracking-widest mb-4">Cookie Policy</h4>
+                  <div className="space-y-4 text-white/60 text-sm leading-relaxed">
+                    <p>
+                      Utilizziamo esclusivamente cookie tecnici necessari al corretto funzionamento dell'app e alla memorizzazione delle tue preferenze di sessione.
+                    </p>
+                  </div>
+                </section>
+              </div>
+
+              <div className="p-6 bg-white/5 text-center">
+                <p className="text-[10px] text-white/20 uppercase tracking-[0.3em]">SpotSmart App © 2026 - Versione 1.0.0</p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Cookie Banner */}
+      <AnimatePresence>
+        {showCookieBanner && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-6 left-6 right-6 md:left-auto md:right-10 md:w-96 z-[400]"
+          >
+            <div className="bg-slate-900/95 backdrop-blur-xl border border-white/10 p-5 rounded-2xl shadow-2xl flex flex-col gap-4">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center shrink-0">
+                  <Globe className="w-5 h-5 text-indigo-400" />
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm text-white/80 font-medium leading-normal">
+                    Utilizziamo i cookie per migliorare la tua esperienza. <button onClick={() => {setIsInfoOpen(true); setIsMenuOpen(false);}} className="text-indigo-400 underline underline-offset-4 hover:text-indigo-300">Leggi di più</button>
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => {
+                    localStorage.setItem('cookieConsent', 'accepted');
+                    setShowCookieBanner(false);
+                  }}
+                  className="flex-1 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase tracking-widest transition-colors"
+                >
+                  Accetto
+                </button>
+                <button 
+                  onClick={() => {
+                    localStorage.setItem('cookieConsent', 'rejected');
+                    setShowCookieBanner(false);
+                  }}
+                  className="flex-1 px-4 py-2 bg-white/5 hover:bg-white/10 text-white/60 rounded-lg text-xs font-bold uppercase tracking-widest transition-colors"
+                >
+                  Rifiuto
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
