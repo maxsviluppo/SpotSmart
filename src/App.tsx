@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Newspaper, TrendingUp, Clock, Share2, ExternalLink, Menu, X, Settings, User as UserIcon, Heart, LogOut, BookOpen, LayoutGrid, Globe, Cpu, Music, Gamepad2, Palette, FlaskConical, Search, RefreshCw, Info } from 'lucide-react';
+import { Newspaper, TrendingUp, Clock, Share2, ExternalLink, Menu, X, Settings, User as UserIcon, Heart, LogOut, BookOpen, LayoutGrid, Globe, Cpu, Music, Gamepad2, Palette, FlaskConical, Search, RefreshCw, Info, Send, Trophy } from 'lucide-react';
 import { auth, loginWithGoogle, logout, onAuthStateChanged, db, handleFirestoreError, OperationType, User } from './firebase';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, Timestamp, getDoc } from 'firebase/firestore';
 
@@ -67,8 +67,8 @@ const FEEDS = [
   { url: "https://www.wired.it/feed/", cat: "Tecnologia", name: "Wired IT" },
   { url: "https://www.punto-informatico.it/feed/", cat: "Tecnologia", name: "Punto Informatico" },
   { url: "https://leganerd.com/feed/", cat: "Tecnologia", name: "Lega Nerd" },
-  { url: "https://www.eurogamer.it/feed/news", cat: "Gaming", name: "Eurogamer" },
-  { url: "https://it.ign.com/feed.xml", cat: "Gaming", name: "IGN Italia" },
+  { url: "https://www.ilsole24ore.com/rss/economia.xml", cat: "Finanza", name: "Il Sole 24 Ore" },
+  { url: "https://feeds.feedburner.com/MilanoFinanzaUltimiLanci", cat: "Finanza", name: "Milano Finanza" },
   { url: "https://www.gazzetta.it/rss/home.xml", cat: "Sport", name: "Gazzetta" },
   { url: "https://www.tuttosport.com/rss/calcio", cat: "Sport", name: "TuttoSport" },
   { url: "https://www.focus.it/rss", cat: "Scienza", name: "Focus" },
@@ -81,9 +81,9 @@ const CATEGORIES = [
   { id: 'cronaca', label: 'Cronaca', icon: BookOpen, color: 'bg-slate-700', border: 'border-slate-500/30' },
   { id: 'mondo', label: 'Mondo', icon: Globe, color: 'bg-blue-500', border: 'border-blue-400/30' },
   { id: 'tecnologia', label: 'Tecnologia', icon: Cpu, color: 'bg-blue-600', border: 'border-blue-400/30' },
-  { id: 'gaming', label: 'Gaming', icon: Gamepad2, color: 'bg-orange-600', border: 'border-orange-400/30' },
-  { id: 'sport', label: 'Sport', icon: TrendingUp, color: 'bg-red-600', border: 'border-red-400/30' },
-  { id: 'scienza', label: 'Scienza', icon: FlaskConical, color: 'bg-emerald-600', border: 'border-emerald-400/30' },
+  { id: 'finanza', label: 'Finanza', icon: TrendingUp, color: 'bg-emerald-600', border: 'border-emerald-400/30' },
+  { id: 'sport', label: 'Sport', icon: Trophy, color: 'bg-red-600', border: 'border-red-400/30' },
+  { id: 'scienza', label: 'Scienza', icon: FlaskConical, color: 'bg-slate-700', border: 'border-slate-500/30' },
   { id: 'cultura', label: 'Cultura', icon: Palette, color: 'bg-pink-600', border: 'border-pink-400/30' },
 ];
 
@@ -245,13 +245,62 @@ export default function App() {
           const desc = item.querySelector("description")?.textContent || 
                        item.querySelector("summary")?.textContent || 
                        item.querySelector("content")?.textContent || "";
-          
-          const imgRegex = /<img[^>]+src="([^">]+)"/;
-          const foundImg = desc.match(imgRegex);
-          const enclosure = item.querySelector("enclosure")?.getAttribute("url");
-          const mediaContent = item.querySelector("content")?.getAttribute("url");
-          
-          const thumb = enclosure || mediaContent || (foundImg ? foundImg[1] : `https://picsum.photos/seed/${feed.cat.toLowerCase()}-${idx}/1600/900`);
+
+          const parseImage = () => {
+            // Helper to find tags ignoring namespaces
+            const getTag = (tagName: string) => {
+              const tags = item.getElementsByTagNameNS("*", tagName);
+              if (tags.length > 0) return tags[0];
+              const localTags = item.getElementsByTagName(tagName);
+              if (localTags.length > 0) return localTags[0];
+              // Try with prefix if namespace handling is weird
+              const prefixedTags = item.getElementsByTagName(`media:${tagName}`);
+              if (prefixedTags.length > 0) return prefixedTags[0];
+              return null;
+            };
+
+            // Priority 1: media:content (most common for high quality)
+            const mContent = getTag("content");
+            if (mContent?.getAttribute("url")) return mContent.getAttribute("url");
+            
+            // Priority 2: enclosure (standard RSS)
+            const enclosure = item.querySelector("enclosure");
+            if (enclosure?.getAttribute("url") && enclosure.getAttribute("type")?.startsWith("image/")) {
+              return enclosure.getAttribute("url");
+            }
+            if (enclosure?.getAttribute("url")) return enclosure.getAttribute("url");
+
+            // Priority 3: media:thumbnail
+            const mThumb = getTag("thumbnail");
+            if (mThumb?.getAttribute("url")) return mThumb.getAttribute("url");
+
+            // Priority 4: media:group
+            const mGroup = getTag("group");
+            if (mGroup) {
+              const gContent = mGroup.getElementsByTagNameNS("*", "content")[0] || mGroup.getElementsByTagName("content")[0];
+              if (gContent?.getAttribute("url")) return gContent.getAttribute("url");
+            }
+
+            // Priority 5: Extract from description/content via regex
+            const contentEncoded = item.getElementsByTagName("content:encoded")[0]?.textContent || "";
+            const fullContent = item.querySelector("content")?.textContent || "";
+            const combinedContent = desc + contentEncoded + fullContent;
+
+            // Better regex for images in HTML
+            const imgRegex = /<img[^>]+src=["']([^"']+)["']/;
+            const foundImg = combinedContent.match(imgRegex);
+            if (foundImg && foundImg[1] && !foundImg[1].includes('feedburner')) {
+              let url = foundImg[1];
+              // Some sites use relative URLs in their feed descriptions
+              if (url.startsWith('//')) url = 'https:' + url;
+              return url;
+            }
+
+            // Priority 6: Fallback to category seed
+            return `https://picsum.photos/seed/${feed.cat.toLowerCase()}-${idx}/1600/900`;
+          };
+
+          const thumb = parseImage();
 
           const pubDate = item.querySelector("pubDate")?.textContent || 
                           item.querySelector("published")?.textContent || 
@@ -430,7 +479,7 @@ export default function App() {
               >
                 {/* Logo Placeholder - User should upload their logo as /logo.png */}
                 <img 
-                  src="/spotsmartcompleto.png" 
+                  src="/logocompletook.png" 
                   alt="SpotSmart Logo" 
                   className="w-72 md:w-96 h-auto drop-shadow-[0_0_50px_rgba(255,255,255,0.4)]"
                   referrerPolicy="no-referrer"
@@ -494,21 +543,23 @@ export default function App() {
           <div className="absolute bottom-[30px] right-10 z-[100] flex items-center gap-4">
             <AnimatePresence>
               {!isMenuOpen && (
-                <motion.button
-                  initial={{ opacity: 0, x: 20, scale: 0.5 }}
-                  animate={{ opacity: 1, x: 0, scale: 1 }}
-                  exit={{ opacity: 0, x: 20, scale: 0.5 }}
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => {
-                    if (displayedNews[currentIndex]) {
-                      window.open(displayedNews[currentIndex].url, '_blank');
-                    }
-                  }}
-                  className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md border border-white/5 text-white/50 flex items-center justify-center shadow-lg hover:bg-white/10 hover:text-white transition-all"
-                >
-                  <ExternalLink className="w-5 h-5" />
-                </motion.button>
+                <div className="flex items-center gap-3">
+                  <motion.button
+                    initial={{ opacity: 0, x: 20, scale: 0.5 }}
+                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                    exit={{ opacity: 0, x: 20, scale: 0.5 }}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => {
+                      if (displayedNews[currentIndex]) {
+                        window.open(displayedNews[currentIndex].url, '_blank');
+                      }
+                    }}
+                    className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md border border-white/5 text-white/50 flex items-center justify-center shadow-lg hover:bg-white/10 hover:text-white transition-all"
+                  >
+                    <ExternalLink className="w-5 h-5" />
+                  </motion.button>
+                </div>
               )}
             </AnimatePresence>
             <div className="relative">
@@ -569,6 +620,25 @@ export default function App() {
                         }
                       },
                       { 
+                        icon: user ? LogOut : UserIcon, 
+                        label: user ? 'Logout' : 'Profilo', 
+                        isActive: !!user,
+                        action: user ? logout : loginWithGoogle 
+                      },
+                      { 
+                        icon: Send, 
+                        label: 'Invia App', 
+                        action: () => {
+                          if (navigator.share) {
+                            navigator.share({
+                              title: 'SpotSmart',
+                              text: 'Leggi le ultime notizie su SpotSmart!',
+                              url: 'https://spotsmart.it'
+                            }).catch(() => {});
+                          }
+                        }
+                      },
+                      { 
                         icon: Share2, 
                         label: 'Condividi', 
                         action: () => {
@@ -579,12 +649,6 @@ export default function App() {
                             }).catch(() => {});
                           }
                         } 
-                      },
-                      { 
-                        icon: user ? LogOut : UserIcon, 
-                        label: user ? 'Logout' : 'Profilo', 
-                        isActive: !!user,
-                        action: user ? logout : loginWithGoogle 
                       },
                     ].map((item, i) => (
                         <motion.div 
@@ -628,7 +692,7 @@ export default function App() {
                           <motion.div layoutId={item.isActive ? "active-menu-icon" : undefined}>
                             <item.icon className={`w-5 h-5 ${item.isActive ? 'fill-current' : ''}`} />
                           </motion.div>
-                          <span className="absolute right-full mr-4 px-3 py-1 rounded-lg bg-slate-900/90 text-white text-[10px] font-medium opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap border border-white/10">
+                          <span className="absolute right-full mr-4 px-3 py-1 text-white text-[10px] font-bold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
                             {item.label}
                           </span>
                         </motion.button>
@@ -639,7 +703,7 @@ export default function App() {
                               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
                                 {CATEGORIES.map((cat, ci, arr) => {
                                   const angle = (Math.PI / 2) + (Math.PI * (ci / (arr.length - 1))); // From 90 to 270 degrees
-                                  const radius = 110;
+                                  const radius = 112;
                                   const x = Math.cos(angle) * radius;
                                   const y = Math.sin(angle) * radius;
                                   
@@ -663,17 +727,25 @@ export default function App() {
                                         setIsMenuOpen(false);
                                         setCurrentIndex(0);
                                       }}
-                                      className={`absolute pointer-events-auto w-[42px] h-[42px] rounded-full flex items-center justify-center backdrop-blur-xl border border-white/20 shadow-xl transition-all group/cat ${
+                                      className={`absolute pointer-events-auto w-[44px] h-[44px] rounded-full flex items-center justify-center backdrop-blur-xl border border-white/20 shadow-xl transition-all group/cat ${
                                         selectedCategory === cat.id 
                                           ? `${cat.color} text-white` 
                                           : 'bg-white/20 text-white/80 hover:bg-white/30 hover:text-white'
                                       }`}
-                                      style={{ left: '50%', top: '50%', marginLeft: '-21px', marginTop: '-21px' }}
+                                      style={{ left: '50%', top: '50%', marginLeft: '-22px', marginTop: '-22px' }}
                                     >
                                       <motion.div layoutId={selectedCategory === cat.id ? "active-cat-icon" : undefined}>
                                         <cat.icon className="w-4 h-4" />
                                       </motion.div>
-                                      <span className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-slate-900/90 text-white text-[8px] font-medium opacity-0 group-hover/cat:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+                                      <span 
+                                        className="absolute px-2 py-0.5 text-white text-[9px] font-bold uppercase tracking-wider opacity-0 group-hover/cat:opacity-100 transition-opacity pointer-events-none whitespace-nowrap drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
+                                        style={{
+                                          left: x < 0 ? 'auto' : '120%',
+                                          right: x < 0 ? '120%' : 'auto',
+                                          top: '50%',
+                                          transform: 'translateY(-50%)'
+                                        }}
+                                      >
                                         {cat.label}
                                       </span>
                                     </motion.button>
@@ -850,7 +922,7 @@ export default function App() {
               {loading && newsItems.length === 0 ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black z-50">
                   <motion.img
-                    src="/spotsmartcompleto.png"
+                    src="/logocompletook.png"
                     animate={{ 
                       scale: [1, 1.05, 1],
                       opacity: [0.6, 1, 0.6]
@@ -919,7 +991,7 @@ export default function App() {
                           className="max-w-2xl space-y-4"
                         >
                           <div className="overflow-hidden">
-                            <h2 className="text-4xl md:text-6xl font-black text-white leading-tight tracking-tighter uppercase flex flex-wrap gap-x-3">
+                            <h2 className="text-3xl md:text-5xl font-black text-white leading-tight tracking-tighter uppercase flex flex-wrap gap-x-3">
                               {currentItem.title.split(' ').map((word, i) => (
                                 <motion.span
                                   key={i}
