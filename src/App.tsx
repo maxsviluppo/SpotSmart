@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Newspaper, TrendingUp, Clock, Share2, ExternalLink, Menu, X, Settings, User as UserIcon, Heart, LogOut, BookOpen, LayoutGrid, Globe, Cpu, Music, Gamepad2, Palette, FlaskConical, Search, RefreshCw, Info, Send, Trophy } from 'lucide-react';
+import { Newspaper, TrendingUp, Clock, Share2, ExternalLink, Menu, X, Settings, User as UserIcon, Heart, LogOut, BookOpen, LayoutGrid, Globe, Cpu, Music, Gamepad2, Palette, FlaskConical, Search, RefreshCw, Info, Send, Trophy, MapPin } from 'lucide-react';
 import { auth, loginWithGoogle, logout, onAuthStateChanged, db, handleFirestoreError, OperationType, User } from './firebase';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, Timestamp, getDoc } from 'firebase/firestore';
 
@@ -65,22 +65,74 @@ const FEEDS = [
   { url: "https://www.adnkronos.com/rss/home", cat: "Cronaca", name: "Adnkronos" },
   { url: "https://www.reuters.com/arc/outboundfeeds/rss/category/world/?outputType=xml", cat: "Mondo", name: "Reuters" },
   { url: "https://feeds.bbci.co.uk/news/world/rss.xml", cat: "Mondo", name: "BBC News" },
+  { url: "https://www.lastampa.it/rss/torino.xml", cat: "Regioni", name: "La Stampa (Torino)" },
+  { url: "https://www.ilgiorno.it/rss/milano", cat: "Regioni", name: "Il Giorno" },
+  { url: "https://www.ilgazzettino.it/rss/veneto.xml", cat: "Regioni", name: "Il Gazzettino" },
+  { url: "https://www.ilrestodelcarlino.it/rss/bologna", cat: "Regioni", name: "Il Resto del Carlino" },
+  { url: "https://www.ilmessaggero.it/rss/roma.xml", cat: "Regioni", name: "Il Messaggero" },
+  { url: "https://www.ilmattino.it/rss/napoli.xml", cat: "Regioni", name: "Il Mattino" },
+  { url: "https://www.lasicilia.it/rss/cronaca", cat: "Regioni", name: "La Sicilia" },
+  { url: "https://www.unionesarda.it/rss", cat: "Regioni", name: "L'Unione Sarda" },
+  // Scienza - Global & IT
+  { url: "https://www.nasa.gov/feed/", cat: "Scienza", name: "NASA" },
+  { url: "https://www.nature.com/nature.rss", cat: "Scienza", name: "Nature" },
+  { url: "https://www.sciencedaily.com/rss/all.xml", cat: "Scienza", name: "ScienceDaily" },
+  { url: "https://phys.org/rss-feed/", cat: "Scienza", name: "Phys.org" },
+  { url: "https://www.lescienze.it/rss/all/rss2.0.xml", cat: "Scienza", name: "Le Scienze" },
+  { url: "https://www.focus.it/rss", cat: "Scienza", name: "Focus.it" },
+  { url: "https://www.ansa.it/sito/ansait_scienza_rss.xml", cat: "Scienza", name: "ANSA Scienza" },
+  { url: "https://www.galileonet.it/feed/", cat: "Scienza", name: "Galileo" },
+  { url: "https://www.meteo.it/rss/news", cat: "Scienza", name: "Meteo.it" },
+  { url: "https://www.media.inaf.it/feed/", cat: "Scienza", name: "INAF" },
+  // Tecnologia - IT
+  { url: "https://www.hdblog.it/feed/", cat: "Tecnologia", name: "HD Blog" },
+  { url: "https://www.dday.it/rss", cat: "Tecnologia", name: "DDay.it" },
+  { url: "https://www.tomshw.it/rss/", cat: "Tecnologia", name: "Tom's Hardware" },
   { url: "https://www.wired.it/feed/", cat: "Tecnologia", name: "Wired IT" },
   { url: "https://www.punto-informatico.it/feed/", cat: "Tecnologia", name: "Punto Informatico" },
   { url: "https://leganerd.com/feed/", cat: "Tecnologia", name: "Lega Nerd" },
-  { url: "https://www.ilsole24ore.com/rss/economia.xml", cat: "Finanza", name: "Il Sole 24 Ore" },
-  { url: "https://feeds.feedburner.com/MilanoFinanzaUltimiLanci", cat: "Finanza", name: "Milano Finanza" },
+  { url: "https://www.macitynet.it/feed/", cat: "Tecnologia", name: "Macitynet" },
+  // Tecnologia - Global
+  { url: "https://www.theverge.com/rss/index.xml", cat: "Tecnologia", name: "The Verge" },
+  { url: "https://techcrunch.com/feed/", cat: "Tecnologia", name: "TechCrunch" },
+  { url: "https://www.technologyreview.com/feed/", cat: "Tecnologia", name: "MIT Tech Review" },
+  { url: "https://feeds.arstechnica.com/arstechnica/index", cat: "Tecnologia", name: "Ars Technica" },
+  { url: "https://openai.com/news/rss.xml", cat: "Tecnologia", name: "OpenAI Blog" },
+  { url: "https://blog.google/technology/ai/rss/", cat: "Tecnologia", name: "Google AI" },
+  // Finanza - IT
+  { url: "https://www.ilsole24ore.com/rss/finanza-e-mercati.xml", cat: "Finanza", name: "Il Sole 24 Ore" },
+  { url: "https://www.milanofinanza.it/rss/notizie-milano-finanza.xml", cat: "Finanza", name: "Milano Finanza" },
+  { url: "https://www.wallstreetitalia.com/feed/", cat: "Finanza", name: "Wall Street Italia" },
+  { url: "https://quifinanza.it/feed/", cat: "Finanza", name: "QuiFinanza" },
+  { url: "https://www.borsaitaliana.it/borsa/notizie/rss/home.xml", cat: "Finanza", name: "Borsa Italiana" },
+  { url: "https://www.teleborsa.it/RSS/News.xml", cat: "Finanza", name: "Teleborsa" },
+  // Finanza - Global
+  { url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839069", cat: "Finanza", name: "CNBC (Finance)" },
+  { url: "https://www.ft.com/?format=rss", cat: "Finanza", name: "Financial Times" },
+  { url: "https://feeds.content.dowjones.io/public/rss/mw_topstories", cat: "Finanza", name: "MarketWatch" },
+  { url: "https://www.investopedia.com/rss/all", cat: "Finanza", name: "Investopedia" },
+  // Sport
   { url: "https://www.gazzetta.it/rss/home.xml", cat: "Sport", name: "Gazzetta" },
   { url: "https://www.tuttosport.com/rss/calcio", cat: "Sport", name: "TuttoSport" },
-  { url: "https://www.focus.it/rss", cat: "Scienza", name: "Focus" },
+  // Cultura - IT
+  { url: "https://www.ilpost.it/cultura/feed/", cat: "Cultura", name: "Il Post (Cultura)" },
+  { url: "https://www.minimaetmoralia.it/wp/feed/", cat: "Cultura", name: "Minima & Moralia" },
   { url: "https://www.artribune.com/feed/", cat: "Cultura", name: "Artribune" },
-  { url: "https://www.minimaetmoralia.it/wp/feed/", cat: "Cultura", name: "Minima&Moralia" }
+  { url: "https://arte.sky.it/feed", cat: "Cultura", name: "Sky Arte" },
+  { url: "https://www.finestresullarte.info/rss/news.xml", cat: "Cultura", name: "Finestre sull'Arte" },
+  { url: "https://www.lindiceonline.com/feed/", cat: "Cultura", name: "L'Indice" },
+  { url: "https://www.doppiozero.com/feed", cat: "Cultura", name: "Doppiozero" },
+  // Cultura - Global
+  { url: "https://www.newyorker.com/feed/culture", cat: "Cultura", name: "The New Yorker (Culture)" },
+  { url: "https://www.openculture.com/feed", cat: "Cultura", name: "Open Culture" },
+  { url: "https://www.bbc.com/culture/feed.rss", cat: "Cultura", name: "BBC Culture" }
 ];
 
 const CATEGORIES = [
   { id: 'all', label: 'Tutte', icon: Globe, color: 'bg-indigo-600', border: 'border-indigo-400/30' },
   { id: 'cronaca', label: 'Cronaca', icon: BookOpen, color: 'bg-slate-700', border: 'border-slate-500/30' },
   { id: 'mondo', label: 'Mondo', icon: Globe, color: 'bg-blue-500', border: 'border-blue-400/30' },
+  { id: 'regioni', label: 'Regioni', icon: MapPin, color: 'bg-amber-600', border: 'border-amber-400/30' },
   { id: 'tecnologia', label: 'Tecnologia', icon: Cpu, color: 'bg-blue-600', border: 'border-blue-400/30' },
   { id: 'finanza', label: 'Finanza', icon: TrendingUp, color: 'bg-emerald-600', border: 'border-emerald-400/30' },
   { id: 'sport', label: 'Sport', icon: Trophy, color: 'bg-red-600', border: 'border-red-400/30' },
@@ -630,16 +682,6 @@ export default function App() {
                   >
                     {[
                       { 
-                        icon: RefreshCw, 
-                        label: 'Aggiorna', 
-                        action: fetchAllFeeds 
-                      },
-                      { 
-                        icon: Info, 
-                        label: 'Info & Privacy', 
-                        action: () => setIsInfoOpen(true)
-                      },
-                      { 
                         icon: LayoutGrid, 
                         label: 'Categorie', 
                         action: () => setIsCategoryMenuOpen(!isCategoryMenuOpen)
@@ -657,12 +699,6 @@ export default function App() {
                             setSearchQuery('');
                           }
                         }
-                      },
-                      { 
-                        icon: user ? LogOut : UserIcon, 
-                        label: user ? 'Logout' : 'Profilo', 
-                        isActive: !!user,
-                        action: user ? logout : loginWithGoogle 
                       },
                       { 
                         icon: Send, 
@@ -688,6 +724,22 @@ export default function App() {
                             }).catch(() => {});
                           }
                         } 
+                      },
+                      { 
+                        icon: RefreshCw, 
+                        label: 'Aggiorna', 
+                        action: fetchAllFeeds 
+                      },
+                      { 
+                        icon: Info, 
+                        label: 'Info & Privacy', 
+                        action: () => setIsInfoOpen(true)
+                      },
+                      { 
+                        icon: user ? LogOut : UserIcon, 
+                        label: user ? 'Logout' : 'Profilo', 
+                        isActive: !!user,
+                        action: user ? logout : loginWithGoogle 
                       },
                     ].map((item, i) => (
                         <motion.div 
@@ -742,7 +794,7 @@ export default function App() {
                               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
                                 {CATEGORIES.map((cat, ci, arr) => {
                                   const angle = (Math.PI / 2) + (Math.PI * (ci / (arr.length - 1))); // From 90 to 270 degrees
-                                  const radius = 112;
+                                  const radius = 125;
                                   const x = Math.cos(angle) * radius;
                                   const y = Math.sin(angle) * radius;
                                   
@@ -766,15 +818,15 @@ export default function App() {
                                         setIsMenuOpen(false);
                                         setCurrentIndex(0);
                                       }}
-                                      className={`absolute pointer-events-auto w-[44px] h-[44px] rounded-full flex items-center justify-center backdrop-blur-xl border border-white/20 shadow-xl transition-all group/cat ${
+                                      className={`absolute pointer-events-auto w-[46px] h-[46px] rounded-full flex items-center justify-center backdrop-blur-xl border border-white/20 shadow-xl transition-all group/cat ${
                                         selectedCategory === cat.id 
                                           ? `${cat.color} text-white` 
                                           : 'bg-white/20 text-white/80 hover:bg-white/30 hover:text-white'
                                       }`}
-                                      style={{ left: '50%', top: '50%', marginLeft: '-22px', marginTop: '-22px' }}
+                                      style={{ left: '50%', top: '50%', marginLeft: '-23px', marginTop: '-23px' }}
                                     >
                                       <motion.div layoutId={selectedCategory === cat.id ? "active-cat-icon" : undefined}>
-                                        <cat.icon className="w-4 h-4" />
+                                        <cat.icon className="w-[18px] h-[18px]" />
                                       </motion.div>
                                       <span 
                                         className="absolute px-2 py-0.5 text-white text-[9px] font-bold uppercase tracking-wider opacity-0 group-hover/cat:opacity-100 transition-opacity pointer-events-none whitespace-nowrap drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
@@ -987,11 +1039,9 @@ export default function App() {
                         onDragEnd={(e, { offset, velocity }) => {
                           const swipe = Math.abs(offset.x) > 50 || Math.abs(velocity.x) > 200;
                           if (swipe) {
-                            const nextIndex = currentIndex + (offset.x > 0 ? -1 : 1);
-                            if (nextIndex >= 0 && nextIndex < displayedNews.length) {
-                              setDirection(offset.x > 0 ? -1 : 1);
-                              setCurrentIndex(nextIndex);
-                            }
+                            const nextIndex = (currentIndex + (offset.x > 0 ? -1 : 1) + displayedNews.length) % displayedNews.length;
+                            setDirection(offset.x > 0 ? -1 : 1);
+                            setCurrentIndex(nextIndex);
                           }
                         }}
                         transition={{
