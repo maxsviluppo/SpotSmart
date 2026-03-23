@@ -1,9 +1,98 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import fs from "fs";
 import cors from "cors";
 import Parser from "rss-parser";
 import * as cheerio from "cheerio";
+
+const SEO_FILE = path.join(process.cwd(), "seo_configs.json");
+const SOURCES_FILE = path.join(process.cwd(), "news_sources.json");
+const ANALYTICS_FILE = path.join(process.cwd(), "analytics_config.json");
+
+// Default SEO data
+const DEFAULT_SEO = {
+  all: {
+    title: "SpotSmart Notizie 2024-2025 | Il tuo Hub Intelligente di Informazione",
+    description: "SpotSmart 2024/2025: Il tuo hub intelligente per le notizie in tempo reale. Cronaca, Mondo, Tecnologia, Finanza e Scienza in un'unica piattaforma innovativa.",
+    keywords: "notizie oggi, news tempo reale, attualità 2025, aggregatore notizie, informazione intelligente, spotsmart",
+    url: "https://spotsmart.it/explore/all"
+  },
+  cronaca: {
+    title: "Ultime Notizie Cronaca Italia 2024-2025 | SpotSmart Live",
+    description: "Resta aggiornato sulla cronaca italiana e internazionale: le ultime notizie, inchieste e approfondimenti sui fatti che contano. Aggiornamenti real-time da ANSA e Adnkronos.",
+    keywords: "cronaca italia oggi, notizie cronaca ultime ore, inchieste giudiziarie, sicurezza urbana 2025, politica italiana news",
+    url: "https://spotsmart.it/explore/cronaca"
+  },
+  mondo: {
+    title: "Notizie dal Mondo e Geopolitica 2025 | SpotSmart Estero",
+    description: "Analisi approfondite su geopolitica, conflitti e sfide globali. Rimani informato sugli eventi che plasmano il nostro futuro con Reuters, BBC e fonti internazionali.",
+    keywords: "notizie internazionali, geopolitica 2025, crisi medio oriente, elezioni usa 2024 analisi, breaking news mondo",
+    url: "https://spotsmart.it/explore/mondo"
+  },
+  regioni: {
+    title: "Notizie Locali e Cronaca Regionale | SpotSmart Territorio",
+    description: "Le voci del territorio italiano in tempo reale. Cronaca, eventi e politica locale da Messaggero, Gazzettino e le principali testate regionali.",
+    keywords: "notizie locali, cronaca regionale, news territorio, gazzettino, messaggero, eventi città italia",
+    url: "https://spotsmart.it/explore/regioni"
+  },
+  tecnologia: {
+    title: "Tecnologia, AI e Innovazione 2025 | SpotSmart Tech",
+    description: "Scopri le innovazioni in AI generativa, robotica e cybersecurity. Il tuo portale sulle tendenze tech che stanno ridefinendo il futuro con Wired e TechCrunch.",
+    keywords: "tecnologia 2025, ai generativa news, cybersecurity aziendale, robotica avanzata, realtà virtuale news, innovazione digitale",
+    url: "https://spotsmart.it/explore/tecnologia"
+  },
+  finanza: {
+    title: "Economia e Finanza: Mercati e Borse 2025 | SpotSmart Business",
+    description: "Previsioni mercati globali, investimenti e andamento economico. Analisi per decisioni informate con Il Sole 24 Ore e CNBC. Borsa Italiana in tempo reale.",
+    keywords: "mercati finanziari 2025, investimenti sicuri, borsa italiana oggi, inflazione italia news, economy globale, trading online",
+    url: "https://spotsmart.it/explore/finanza"
+  },
+  sport: {
+    title: "Ultime Notizie Sport, Risultati e Calciomercato | SpotSmart Sport",
+    description: "Tutte le ultime notizie su Calcio Serie A, Tennis ATP, F1 e Olimpiadi. Risultati in diretta, interviste e analisi esclusive dalla Gazzetta e Tuttosport.",
+    keywords: "risultati serie a 2025, calciomercato live, tennis atp news, formula 1 oggi, moto gp risultati, sport news italia",
+    url: "https://spotsmart.it/explore/sport"
+  },
+  scienza: {
+    title: "Scienza, Spazio e Medicina 2025 | SpotSmart Science",
+    description: "Le scoperte che cambiano il mondo. Dalle missioni spaziali NASA ai progressi della medicina e ricerca scientifica. Resta aggiornato con Nature e ScienceDaily.",
+    keywords: "scoperte scientifiche 2025, esplorazione spaziale, news medicina 2024, astronomia nasa, ricerca scientifica innovazione",
+    url: "https://spotsmart.it/explore/scienza"
+  },
+  cultura: {
+    title: "Cultura, Arte e Tendenze Sociali 2025 | SpotSmart Culture",
+    description: "Esplora le nuove tendenze artistiche, letterarie e sociali. Approfondimenti su eventi, mostre e il dibattito culturale contemporaneo in Italia e nel mondo.",
+    keywords: "eventi culturali 2025, arte contemporanea news, libri novità, festival cinema italia, tendenze sociali, mostre d'arte",
+    url: "https://spotsmart.it/explore/cultura"
+  },
+  salute: {
+    title: "Salute, Benessere e News Sanità Italia | SpotSmart Health",
+    description: "Le ultime notizie sulla sanità pubblica, consigli per il benessere e aggiornamenti sulla prevenzione. Prendi cura di te con informazioni mediche affidabili.",
+    keywords: "sanità italia 2025, benessere mentale news, prevenzione malattie, alimentazione sana, news medicina, stili di vita sani",
+    url: "https://spotsmart.it/explore/salute"
+  }
+};
+
+// Initialize files if missing
+if (!fs.existsSync(SEO_FILE)) fs.writeFileSync(SEO_FILE, JSON.stringify(DEFAULT_SEO, null, 2));
+if (!fs.existsSync(ANALYTICS_FILE)) fs.writeFileSync(ANALYTICS_FILE, JSON.stringify({ trackingId: "", enabled: true, verificationTag: "" }, null, 2));
+
+function getSeoConfigs() {
+  try { return JSON.parse(fs.readFileSync(SEO_FILE, "utf-8")); } catch (err) { return DEFAULT_SEO; }
+}
+function saveSeoConfigs(configs: any) { fs.writeFileSync(SEO_FILE, JSON.stringify(configs, null, 2)); }
+
+function getAnalytics() {
+  try { return JSON.parse(fs.readFileSync(ANALYTICS_FILE, "utf-8")); } catch (err) { return { trackingId: "" }; }
+}
+function saveAnalytics(data: any) { fs.writeFileSync(ANALYTICS_FILE, JSON.stringify(data, null, 2)); }
+
+function getSources() {
+  try { return JSON.parse(fs.readFileSync(SOURCES_FILE, "utf-8")); } catch (err) { return []; }
+}
+function saveSources(sources: any) { fs.writeFileSync(SOURCES_FILE, JSON.stringify(sources, null, 2)); }
+
 
 const app = express();
 const parser = new Parser({
@@ -18,6 +107,40 @@ const parser = new Parser({
     ]
   }
 });
+
+// Helper for SEO Injection
+function injectMetadata(html: string, config: any, analytics: any, reqUrl: string) {
+  const gaScript = (analytics.enabled && analytics.trackingId) ? `
+    <script async src="https://www.googletagmanager.com/gtag/js?id=${analytics.trackingId}"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', '${analytics.trackingId}');
+    </script>
+  ` : '';
+
+  let injected = html;
+  
+  // Replace standard tags if they exist
+  injected = injected.replace(/<title>(.*?)<\/title>/i, `<title>${config.title}</title>`);
+  injected = injected.replace(/<meta name="description" content="(.*?)"/i, `<meta name="description" content="${config.description}"`);
+  injected = injected.replace(/<meta name="keywords" content="(.*?)"/i, `<meta name="keywords" content="${config.keywords}"`);
+
+  // Append new tags before </head>
+  const tags = `
+    <meta property="og:title" content="${config.title}" />
+    <meta property="og:description" content="${config.description}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://spotsmart.it${reqUrl}" />
+    <link rel="canonical" href="https://spotsmart.it${reqUrl}" />
+    ${analytics.verificationTag || ''}
+    ${config.adsense || ''}
+    ${gaScript}
+  `;
+
+  return injected.replace(/<\/head>/i, `${tags}</head>`);
+}
 
 app.use(cors());
 app.use(express.json());
@@ -249,20 +372,74 @@ app.get("/api/news", async (req, res) => {
   }
 });
 
+app.get("/api/admin/seo", (req, res) => res.json(getSeoConfigs()));
+
+app.post("/api/admin/seo", express.json(), (req, res) => {
+  const { auth, category, data } = req.body;
+  if (auth?.username !== 'admin' || auth?.password !== 'accessometti') return res.status(401).send("Unauthorized");
+  const current = getSeoConfigs();
+  current[category] = data;
+  saveSeoConfigs(current);
+  res.send("Saved");
+});
+
+app.get("/api/admin/sources", (req, res) => res.json(getSources()));
+app.post("/api/admin/sources", express.json(), (req, res) => {
+  const { auth, sources } = req.body;
+  if (auth?.username !== 'admin' || auth?.password !== 'accessometti') return res.status(401).send("Unauthorized");
+  saveSources(sources);
+  res.send("Saved");
+});
+
+app.get("/api/admin/analytics", (req, res) => res.json(getAnalytics()));
+app.post("/api/admin/analytics", express.json(), (req, res) => {
+  const { auth, data } = req.body;
+  if (auth?.username !== 'admin' || auth?.password !== 'accessometti') return res.status(401).send("Unauthorized");
+  saveAnalytics(data);
+  res.send("Saved");
+});
+
 async function startServer() {
   const PORT = 3000;
   
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: "spa",
+      appType: "custom", // Changed to custom to handle index.html manually
     });
     app.use(vite.middlewares);
+    
+    app.get("*", async (req, res, next) => {
+      const url = req.originalUrl;
+      try {
+        let template = fs.readFileSync(path.resolve(process.cwd(), "index.html"), "utf-8");
+        template = await vite.transformIndexHtml(url, template);
+        
+        const urlPath = req.path.split('/').pop() || 'all';
+        const configs = getSeoConfigs();
+        const config = configs[urlPath] || configs.all;
+        const analytics = getAnalytics();
+        
+        const html = injectMetadata(template, config, analytics, url);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+      } catch (e) {
+        vite.ssrFixStacktrace(e as Error);
+        next(e);
+      }
+    });
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      const urlPath = req.path.split('/').pop() || 'all';
+      const configs = getSeoConfigs();
+      const config = configs[urlPath] || configs.all;
+      const analytics = getAnalytics();
+      
+      const template = fs.readFileSync(path.join(distPath, "index.html"), "utf-8");
+      const html = injectMetadata(template, config, analytics, req.originalUrl);
+      
+      res.send(html);
     });
   }
 

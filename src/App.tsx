@@ -5,9 +5,11 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Newspaper, TrendingUp, Clock, Share2, ExternalLink, Menu, X, Settings, User as UserIcon, Heart, LogOut, BookOpen, LayoutGrid, Globe, Cpu, Music, Gamepad2, Palette, FlaskConical, Search, RefreshCw, Info, Send, Trophy, MapPin, Plus, Stethoscope } from 'lucide-react';
-import { auth, loginWithGoogle, logout, onAuthStateChanged, db, handleFirestoreError, OperationType, User } from './firebase';
-import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, Timestamp, getDoc } from 'firebase/firestore';
+import { Newspaper, TrendingUp, Clock, Share2, ExternalLink, Menu, X, Settings, User as UserIcon, Heart, LogOut, BookOpen, LayoutGrid, Globe, Cpu, Music, Gamepad2, Palette, FlaskConical, Search, RefreshCw, Info, Send, Trophy, MapPin, Plus, Stethoscope, Shield, Lock, Save, Trash2, CheckCircle2, Activity, Database, BarChart3, ChevronRight } from 'lucide-react';
+import { auth, loginWithGoogle, logout, onAuthStateChanged, db, handleFirestoreError, OperationType } from './firebase';
+import type { User } from './firebase';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, Timestamp, getDoc, addDoc } from 'firebase/firestore';
+import { FEEDS } from './feeds';
 
 interface NewsItem {
   id: string;
@@ -45,87 +47,6 @@ const variants = {
     }
   })
 };
-
-const FEEDS = [
-  { url: "https://www.ansa.it/sito/ansait_rss.xml", cat: "Cronaca", name: "ANSA" },
-  { url: "https://www.tgcom24.mediaset.it/rss/homepage.xml", cat: "Cronaca", name: "TGCOM24" },
-  { url: "https://www.adnkronos.com/rss/home", cat: "Cronaca", name: "Adnkronos" },
-  { url: "https://www.reuters.com/arc/outboundfeeds/rss/category/world/?outputType=xml", cat: "Mondo", name: "Reuters" },
-  { url: "https://feeds.bbci.co.uk/news/world/rss.xml", cat: "Mondo", name: "BBC News" },
-  { url: "https://www.lastampa.it/rss/torino.xml", cat: "Regioni", name: "La Stampa (Torino)" },
-  { url: "https://www.ilgiorno.it/rss/milano", cat: "Regioni", name: "Il Giorno" },
-  { url: "https://www.ilgazzettino.it/rss/veneto.xml", cat: "Regioni", name: "Il Gazzettino" },
-  { url: "https://www.ilrestodelcarlino.it/rss/bologna", cat: "Regioni", name: "Il Resto del Carlino" },
-  { url: "https://www.ilmessaggero.it/rss/roma.xml", cat: "Regioni", name: "Il Messaggero" },
-  { url: "https://www.ilmattino.it/rss/napoli.xml", cat: "Regioni", name: "Il Mattino" },
-  { url: "https://www.lasicilia.it/rss/cronaca", cat: "Regioni", name: "La Sicilia" },
-  { url: "https://www.unionesarda.it/rss", cat: "Regioni", name: "L'Unione Sarda" },
-  // Scienza - Global & IT
-  { url: "https://www.nasa.gov/feed/", cat: "Scienza", name: "NASA" },
-  { url: "https://www.nature.com/nature.rss", cat: "Scienza", name: "Nature" },
-  { url: "https://www.sciencedaily.com/rss/all.xml", cat: "Scienza", name: "ScienceDaily" },
-  { url: "https://phys.org/rss-feed/", cat: "Scienza", name: "Phys.org" },
-  { url: "https://www.lescienze.it/rss/all/rss2.0.xml", cat: "Scienza", name: "Le Scienze" },
-  { url: "https://www.focus.it/rss", cat: "Scienza", name: "Focus.it" },
-  { url: "https://www.ansa.it/sito/ansait_scienza_rss.xml", cat: "Scienza", name: "ANSA Scienza" },
-  { url: "https://www.galileonet.it/feed/", cat: "Scienza", name: "Galileo" },
-  { url: "https://www.meteo.it/rss/news", cat: "Scienza", name: "Meteo.it" },
-  { url: "https://www.media.inaf.it/feed/", cat: "Scienza", name: "INAF" },
-  // Tecnologia - IT
-  { url: "https://www.hdblog.it/feed/", cat: "Tecnologia", name: "HD Blog" },
-  { url: "https://www.dday.it/rss", cat: "Tecnologia", name: "DDay.it" },
-  { url: "https://www.tomshw.it/rss/", cat: "Tecnologia", name: "Tom's Hardware" },
-  { url: "https://www.wired.it/feed/", cat: "Tecnologia", name: "Wired IT" },
-  { url: "https://www.punto-informatico.it/feed/", cat: "Tecnologia", name: "Punto Informatico" },
-  { url: "https://leganerd.com/feed/", cat: "Tecnologia", name: "Lega Nerd" },
-  { url: "https://www.macitynet.it/feed/", cat: "Tecnologia", name: "Macitynet" },
-  // Tecnologia - Global
-  { url: "https://www.theverge.com/rss/index.xml", cat: "Tecnologia", name: "The Verge" },
-  { url: "https://techcrunch.com/feed/", cat: "Tecnologia", name: "TechCrunch" },
-  { url: "https://www.technologyreview.com/feed/", cat: "Tecnologia", name: "MIT Tech Review" },
-  { url: "https://feeds.arstechnica.com/arstechnica/index", cat: "Tecnologia", name: "Ars Technica" },
-  { url: "https://openai.com/news/rss.xml", cat: "Tecnologia", name: "OpenAI Blog" },
-  { url: "https://blog.google/technology/ai/rss/", cat: "Tecnologia", name: "Google AI" },
-  // Finanza - IT
-  { url: "https://www.ilsole24ore.com/rss/finanza-e-mercati.xml", cat: "Finanza", name: "Il Sole 24 Ore" },
-  { url: "https://www.milanofinanza.it/rss/notizie-milano-finanza.xml", cat: "Finanza", name: "Milano Finanza" },
-  { url: "https://www.wallstreetitalia.com/feed/", cat: "Finanza", name: "Wall Street Italia" },
-  { url: "https://quifinanza.it/feed/", cat: "Finanza", name: "QuiFinanza" },
-  { url: "https://www.borsaitaliana.it/borsa/notizie/rss/home.xml", cat: "Finanza", name: "Borsa Italiana" },
-  { url: "https://www.teleborsa.it/RSS/News.xml", cat: "Finanza", name: "Teleborsa" },
-  // Finanza - Global
-  { url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839069", cat: "Finanza", name: "CNBC (Finance)" },
-  { url: "https://www.ft.com/?format=rss", cat: "Finanza", name: "Financial Times" },
-  { url: "https://feeds.content.dowjones.io/public/rss/mw_topstories", cat: "Finanza", name: "MarketWatch" },
-  { url: "https://www.investopedia.com/rss/all", cat: "Finanza", name: "Investopedia" },
-  // Sport
-  { url: "https://www.gazzetta.it/rss/home.xml", cat: "Sport", name: "Gazzetta" },
-  { url: "https://www.tuttosport.com/rss/calcio", cat: "Sport", name: "TuttoSport" },
-  // Cultura - IT
-  { url: "https://www.ilpost.it/cultura/feed/", cat: "Cultura", name: "Il Post (Cultura)" },
-  { url: "https://www.minimaetmoralia.it/wp/feed/", cat: "Cultura", name: "Minima & Moralia" },
-  { url: "https://www.artribune.com/feed/", cat: "Cultura", name: "Artribune" },
-  { url: "https://arte.sky.it/feed", cat: "Cultura", name: "Sky Arte" },
-  { url: "https://www.finestresullarte.info/rss/news.xml", cat: "Cultura", name: "Finestre sull'Arte" },
-  { url: "https://www.lindiceonline.com/feed/", cat: "Cultura", name: "L'Indice" },
-  { url: "https://www.doppiozero.com/feed", cat: "Cultura", name: "Doppiozero" },
-  // Cultura - Global
-  { url: "https://www.newyorker.com/feed/culture", cat: "Cultura", name: "The New Yorker (Culture)" },
-  { url: "https://www.openculture.com/feed", cat: "Cultura", name: "Open Culture" },
-  { url: "https://www.bbc.com/culture/feed.rss", cat: "Cultura", name: "BBC Culture" },
-  // Salute
-  { url: "https://www.fondazioneveronesi.it/magazine/rss", cat: "Salute", name: "Fondazione Veronesi" },
-  { url: "https://www.dica33.it/rss/news.xml", cat: "Salute", name: "Dica33" },
-  { url: "http://www.quotidianosanita.it/rss/rss.php", cat: "Salute", name: "Quotidianosanità" },
-  { url: "https://www.iss.it/news/-/asset_publisher/987654321/rss", cat: "Salute", name: "ISS News" },
-  { url: "https://www.ansa.it/canale_saluteebenessere/notizie/sanita_rss.xml", cat: "Salute", name: "Salute Lab (ANSA)" },
-  { url: "https://www.humanitasalute.it/feed/", cat: "Salute", name: "Humanitas Salute" },
-  { url: "https://www.medicalnewstoday.com/rss", cat: "Salute", name: "Medical News Today" },
-  { url: "https://www.who.int/rss-feeds/news-english.xml", cat: "Salute", name: "WHO (OMS)" },
-  { url: "https://www.sciencedaily.com/rss/health_medicine.xml", cat: "Salute", name: "ScienceDaily (Health)" },
-  { url: "https://www.youtube.com/feeds/videos.xml?channel_id=UC6P0M6qRz6f0M6qRz6f0M6q", cat: "Salute", name: "Pillole di Salute" },
-  { url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCX0S2H6_i9P_Z_I8J_8J_A", cat: "Salute", name: "Ospedale Bambino Gesù" }
-];
 
 const CATEGORIES = [
   { id: 'all', label: 'Tutte', icon: LayoutGrid, color: 'bg-indigo-600', border: 'border-indigo-400/30' },
@@ -457,7 +378,19 @@ export default function App() {
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [showCookieBanner, setShowCookieBanner] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
-  const splashBg = useMemo(() => `https://picsum.photos/seed/${Math.random()}/1920/1080`, []);
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+  const [seoConfigs, setSeoConfigs] = useState<Record<string, any>>({});
+  const [adminUsername, setAdminUsername] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminError, setAdminError] = useState('');
+  const [isSavingSeo, setIsSavingSeo] = useState(false);
+  const [adminTab, setAdminTab] = useState<'seo' | 'sources' | 'analytics'>('seo');
+  const [newsSources, setNewsSources] = useState<any[]>([]);
+  const [newSource, setNewSource] = useState({ name: '', url: '', cat: 'Cronaca' });
+  const [analyticsConfig, setAnalyticsConfig] = useState({ trackingId: '', enabled: true, verificationTag: '' });
+  const splashBg = useMemo(() => `https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&q=80&w=1920&h=1080`, []);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -472,6 +405,268 @@ export default function App() {
     }
     return () => clearTimeout(timer);
   }, []);
+
+  // Load SEO Configs
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'seo_configs'), async (snapshot) => {
+      const defaultSeo: Record<string, any> = {
+        all: {
+          title: "SpotSmart Notizie 2024-2025 | Il tuo Hub Intelligente di Informazione",
+          description: "SpotSmart 2024/2025: Il tuo hub intelligente per le notizie in tempo reale. Cronaca, Mondo, Tecnologia, Finanza e Scienza in un'unica piattaforma innovativa.",
+          keywords: "notizie oggi, news tempo reale, attualità 2025, aggregatore notizie, informazione intelligente, spotsmart",
+          url: "https://spotsmart.it/explore/all"
+        },
+        cronaca: {
+          title: "Ultime Notizie Cronaca Italia 2024-2025 | SpotSmart Live",
+          description: "Resta aggiornato sulla cronaca italiana e internazionale: le ultime notizie, inchieste e approfondimenti sui fatti che contano. Aggiornamenti real-time da ANSA e Adnkronos.",
+          keywords: "cronaca italia oggi, notizie cronaca ultime ore, inchieste giudiziarie, sicurezza urbana 2025, politica italiana news",
+          url: "https://spotsmart.it/explore/cronaca"
+        },
+        mondo: {
+          title: "Notizie dal Mondo e Geopolitica 2025 | SpotSmart Estero",
+          description: "Analisi approfondite su geopolitica, conflitti e sfide globali. Rimani informato sugli eventi che plasmano il nostro futuro con Reuters, BBC e fonti internazionali.",
+          keywords: "notizie internazionali, geopolitica 2025, crisi medio oriente, elezioni usa 2024 analisi, breaking news mondo",
+          url: "https://spotsmart.it/explore/mondo"
+        },
+        regioni: {
+          title: "Notizie Locali e Cronaca Regionale | SpotSmart Territorio",
+          description: "Le voci del territorio italiano in tempo reale. Cronaca, eventi e politica locale da Messaggero, Gazzettino e le principali testate regionali.",
+          keywords: "notizie locali, cronaca regionale, news territorio, gazzettino, messaggero, eventi città italia",
+          url: "https://spotsmart.it/explore/regioni"
+        },
+        tecnologia: {
+          title: "Tecnologia, AI e Innovazione 2025 | SpotSmart Tech",
+          description: "Scopri le innovazioni in AI generativa, robotica e cybersecurity. Il tuo portale sulle tendenze tech che stanno ridefinendo il futuro con Wired e TechCrunch.",
+          keywords: "tecnologia 2025, ai generativa news, cybersecurity aziendale, robotica avanzata, realtà virtuale news, innovazione digitale",
+          url: "https://spotsmart.it/explore/tecnologia"
+        },
+        finanza: {
+          title: "Economia e Finanza: Mercati e Borse 2025 | SpotSmart Business",
+          description: "Previsioni mercati globali, investimenti e andamento economico. Analisi per decisioni informate con Il Sole 24 Ore e CNBC. Borsa Italiana in tempo reale.",
+          keywords: "mercati finanziari 2025, investimenti sicuri, borsa italiana oggi, inflazione italia news, economia globale, trading online",
+          url: "https://spotsmart.it/explore/finanza"
+        },
+        sport: {
+          title: "Ultime Notizie Sport, Risultati e Calciomercato | SpotSmart Sport",
+          description: "Tutte le ultime notizie su Calcio Serie A, Tennis ATP, F1 e Olimpiadi. Risultati in diretta, interviste e analisi esclusive dalla Gazzetta e Tuttosport.",
+          keywords: "risultati serie a 2025, calciomercato live, tennis atp news, formula 1 oggi, moto gp risultati, sport news italia",
+          url: "https://spotsmart.it/explore/sport"
+        },
+        scienza: {
+          title: "Scienza, Spazio e Medicina 2025 | SpotSmart Science",
+          description: "Le scoperte che cambiano il mondo. Dalle missioni spaziali NASA ai progressi della medicina e ricerca scientifica. Resta aggiornato con Nature e ScienceDaily.",
+          keywords: "scoperte scientifiche 2025, esplorazione spaziale, news medicina 2024, astronomia nasa, ricerca scientifica innovazione",
+          url: "https://spotsmart.it/explore/scienza"
+        },
+        cultura: {
+          title: "Cultura, Arte e Tendenze Sociali 2025 | SpotSmart Culture",
+          description: "Esplora le nuove tendenze artistiche, letterarie e sociali. Approfondimenti su eventi, mostre e il dibattito culturale contemporaneo in Italia e nel mondo.",
+          keywords: "eventi culturali 2025, arte contemporanea news, libri novità, festival cinema italia, tendenze sociali, mostre d'arte",
+          url: "https://spotsmart.it/explore/cultura"
+        },
+        salute: {
+          title: "Salute, Benessere e News Sanità Italia | SpotSmart Health",
+          description: "Le ultime notizie sulla sanità pubblica, consigli per il benessere e aggiornamenti sulla prevenzione. Prendi cura di te con informazioni mediche affidabili.",
+          keywords: "sanità italia 2025, benessere mentale news, prevenzione malattie, alimentazione sana, news medicina, stili di vita sani",
+          url: "https://spotsmart.it/explore/salute"
+        }
+      };
+
+      if (snapshot.empty) {
+        console.log("Seeding all SEO configs...");
+        try {
+          const promises = Object.entries(defaultSeo).map(([id, data]) => 
+            setDoc(doc(db, 'seo_configs', id), { ...data, adsense: "", updatedAt: Timestamp.now() })
+          );
+          await Promise.all(promises);
+        } catch (e) {
+          console.error("Firestore SEO seed failed:", e);
+        }
+        setSeoConfigs(defaultSeo); // Ensure UI gets it immediately regardless of DB error
+      } else {
+        const configs: Record<string, any> = {};
+        snapshot.forEach(doc => {
+          configs[doc.id] = doc.data();
+        });
+        
+        // Ensure ALL categories have a config, even if some were deleted
+        let missingFound = false;
+        try {
+          const missingPromises = Object.entries(defaultSeo).map(async ([id, data]) => {
+            if (!configs[id]) {
+              missingFound = true;
+              configs[id] = { ...data, adsense: "", updatedAt: Timestamp.now() }; // Update locally
+              await setDoc(doc(db, 'seo_configs', id), configs[id]);
+            }
+          });
+          if (missingFound) await Promise.all(missingPromises);
+        } catch (e) {
+          console.error("Firestore SEO missing seed failed:", e);
+        }
+        
+        setSeoConfigs(configs);
+      }
+    }, (error) => {
+      console.error("SEO onSnapshot error:", error);
+      setSeoConfigs(defaultSeo);
+    });
+    return () => unsub();
+  }, []);
+
+  // Load & Seed News Sources
+  useEffect(() => {
+    const fetchLocalSources = async () => {
+      try {
+        const res = await fetch('/api/admin/sources');
+        const localSources = await res.json();
+        if (localSources && localSources.length > 0) {
+          setNewsSources(localSources);
+        } else {
+          setNewsSources(FEEDS as any[]);
+        }
+      } catch (e) {
+        setNewsSources(FEEDS as any[]);
+      }
+    };
+
+    const unsub = onSnapshot(collection(db, 'news_sources'), async (snapshot) => {
+      if (snapshot.empty) {
+        console.log("Seeding news sources...");
+        // 1. Instantly use local FEEDS so UI doesn't break
+        fetchLocalSources();
+
+        // 2. Try to seed Firestore (catch error to prevent UI crash if rules block it)
+        try {
+          const promises = FEEDS.map(source => addDoc(collection(db, 'news_sources'), source));
+          await Promise.all(promises);
+        } catch (e) {
+          console.error("Firestore seed failed (likely permission rules):", e);
+        }
+
+        // 3. Sync with local server API
+        try {
+          await fetch('/api/admin/sources', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              auth: { username: 'admin', password: 'accessometti' },
+              sources: FEEDS
+            })
+          });
+        } catch (e) {
+          console.error("Local sync error during seeding:", e);
+        }
+      } else {
+        const sources: any[] = [];
+        snapshot.forEach(doc => {
+          sources.push({ id: doc.id, ...doc.data() });
+        });
+        setNewsSources(sources);
+      }
+    }, (error) => {
+      console.error("Firestore onSnapshot error:", error);
+      // Fallback to local sources if Firestore is entirely unreachable/blocked
+      fetchLocalSources();
+    });
+    return () => unsub();
+  }, []);
+
+  // Load Analytics Config
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      try {
+        const res = await fetch('/api/admin/analytics');
+        const data = await res.json();
+        setAnalyticsConfig(data);
+      } catch (e) {}
+    };
+    fetchAnalytics();
+  }, []);
+
+  const handleAdminLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminUsername === 'admin' && adminPassword === 'accessometti') {
+      setIsAdminLoggedIn(true);
+      setShowAdminLogin(false);
+      setShowAdminDashboard(true);
+      setAdminError('');
+    } else {
+      setAdminError('Credenziali non valide');
+    }
+  };
+
+  const saveAnalytics = async (data: any) => {
+    setAnalyticsConfig(data);
+    try {
+      await fetch('/api/admin/analytics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auth: { username: 'admin', password: 'accessometti' },
+          data: data
+        })
+      });
+    } catch (e) {}
+  };
+
+  const deleteSource = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'news_sources', id));
+      // Server-side sync handled by onSnapshot & explicit API call if needed
+      const updated = newsSources.filter(s => s.id !== id);
+      await fetch('/api/admin/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auth: { username: 'admin', password: 'accessometti' },
+          sources: updated
+        })
+      });
+    } catch (e) {}
+  };
+
+  const addSource = async () => {
+    if (!newSource.name || !newSource.url) return;
+    try {
+      const docRef = await addDoc(collection(db, 'news_sources'), newSource);
+      const updated = [...newsSources, { id: docRef.id, ...newSource }];
+      await fetch('/api/admin/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auth: { username: 'admin', password: 'accessometti' },
+          sources: updated
+        })
+      });
+      setNewSource({ name: '', url: '', cat: 'Cronaca' });
+    } catch (e) {}
+  };
+
+  const saveSeoConfig = async (catId: string, data: any) => {
+    setIsSavingSeo(true);
+    try {
+      // 1. Save to Firestore for real-time sync across clients (if any)
+      await setDoc(doc(db, 'seo_configs', catId), {
+        ...data,
+        updatedAt: Timestamp.now()
+      }, { merge: true });
+
+      // 2. Save to local server JSON for crawler-visible metadata injection
+      await fetch('/api/admin/seo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auth: { username: 'admin', password: 'accessometti' },
+          category: catId,
+          data: data
+        })
+      });
+    } catch (err) {
+      console.error('Error saving SEO:', err);
+    } finally {
+      setIsSavingSeo(false);
+    }
+  };
 
   // Reset to home view after login/logout
   useEffect(() => {
@@ -544,92 +739,84 @@ export default function App() {
   }, [user]);
 
   // Fetch Real News Feeds using the new backend proxy for optimal image/video extraction
-  const fetchSingleFeed = async (feed: typeof FEEDS[0]) => {
+  // Fetch Real News Feeds using the dynamic sources from Admin Panel
+  const fetchSingleFeed = async (source: any) => {
     try {
-      const response = await fetch(`/api/news?url=${encodeURIComponent(feed.url)}&category=${encodeURIComponent(feed.cat)}&source=${encodeURIComponent(feed.name)}`);
+      const response = await fetch(`/api/news?url=${encodeURIComponent(source.url)}&category=${encodeURIComponent(source.cat)}&source=${encodeURIComponent(source.name)}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const items = await response.json();
       return items as NewsItem[];
     } catch (e) {
-      console.error(`Error fetching feed ${feed.name}:`, e);
+      console.error(`Error fetching feed ${source.name}:`, e);
       return [];
     }
-  };  const fetchAllFeeds = async () => {
-    // Attempt to load instantly from cache
+  };
+
+  const fetchAllFeeds = async () => {
+    // Attempt to load from cache
     const cachedNews = localStorage.getItem('cachedNews');
     if (cachedNews && newsItems.length === 0) {
       try {
         const parsedCache = JSON.parse(cachedNews);
         if (parsedCache && parsedCache.length > 0) {
           setNewsItems(parsedCache);
-          setLoading(false); // Instantly loaded!
+          setLoading(false);
         }
       } catch (e) { }
     } else {
       setLoading(true);
-    }
-    
-    // 1. Uniform Initial Loading: Load the FIRST feed from EACH category initially
-    const categoriesToLoad = CATEGORIES.filter(c => c.id !== 'all');
-    const firstFeeds = categoriesToLoad.map(cat => FEEDS.find(f => f.cat === cat.label) || FEEDS[0]).filter((v, i, a) => a.findIndex(t => (t.url === v.url)) === i);
-    
-    // Quick load: Process feeds incrementally, don't wait for ALL of them. Show UI as soon as first resolves!
-    const processFeed = async (feed: typeof FEEDS[0]) => {
-      try {
-        const items = await fetchSingleFeed(feed);
-        if (items.length > 0) {
-          setNewsItems(prev => {
-            const existingIds = new Set(prev.map(item => item.id));
-            const newItems = items.filter(item => !existingIds.has(item.id));
-            if (newItems.length > 0) {
-              setLoading(false); // Hide spinner on FIRST successful fetch!
-              return [...prev, ...newItems.sort(() => Math.random() - 0.5)];
-            }
-            return prev;
-          });
-        }
-      } catch (e) {
-        console.error("Feed error:", e);
+      // Check if we have sources loaded yet
+      if (newsSources.length === 0) {
+        setTimeout(() => setLoading(false), 5000); // 5 sec fallback to hide loader
+        return;
       }
-    };
 
-    // Fire unblocking fetching for the first feeds staggered to prevent Rate Limits (429)
-    firstFeeds.forEach((feed, idx) => {
-      setTimeout(() => processFeed(feed), idx * 150);
-    });
+      try {
+        // 1. Uniform Initial Loading: Load the FIRST feed from EACH category initially
+        const categoriesToLoad = CATEGORIES.filter(c => c.id !== 'all');
+        const firstFeeds = categoriesToLoad.map(cat => 
+          newsSources.find(f => f.cat === cat.label) || newsSources[0]
+        ).filter((v, i, a) => v && a.findIndex(t => t && t.url === v.url) === i);
+        
+        const processFeed = async (source: any) => {
+          try {
+            const items = await fetchSingleFeed(source);
+            if (items.length > 0) {
+              setNewsItems(prev => {
+                const existingIds = new Set(prev.map(item => item.id));
+                const newItems = items.filter(item => !existingIds.has(item.id));
+                if (newItems.length > 0) {
+                  return [...prev, ...newItems].sort(() => Math.random() - 0.5);
+                }
+                return prev;
+              });
+            }
+          } catch (e) {
+            console.error(`Process feed failed for ${source.name}:`, e);
+          }
+        };
 
-    // Wait a brief moment to give priority to the very first feeds before hitting network with background
-    await new Promise(resolve => setTimeout(resolve, 2000));
+        // Load initial batch
+        await Promise.all(firstFeeds.map(processFeed));
+        setLoading(false); // Definitely hide loader after initial batch
 
-    // If nothing loaded yet, don't hang forever, close loader (empty state will show if it fails completely)
-    setTimeout(() => setLoading(false), 12000);
-
-    // 2. Background loading: Pre-calculate rest of the feeds
-    let nextFeeds: typeof FEEDS = [];
-    categoriesToLoad.forEach(cat => {
-      const catFeeds = FEEDS.filter(f => f.cat === cat.label && !firstFeeds.some(ff => ff.url === f.url)).slice(0, 9);
-      nextFeeds = [...nextFeeds, ...catFeeds];
-    });
-    
-    // Flatten background queue
-    const loadedUrls = new Set([...firstFeeds, ...nextFeeds].map(f => f.url));
-    const remainingFeeds = FEEDS.filter(f => !loadedUrls.has(f.url));
-    const backgroundQueue = [...nextFeeds, ...remainingFeeds];
-    
-    // Process queue with controlled concurrency
-    const concurrency = 6;
-    for (let i = 0; i < backgroundQueue.length; i += concurrency) {
-      const batch = backgroundQueue.slice(i, i + concurrency);
-      await Promise.allSettled(batch.map(processFeed));
-      
-      // Sleep to breathe and not rate-limit
-      await new Promise(resolve => setTimeout(resolve, 200));
+        // Load the rest in background
+        const remainingFeeds = newsSources.filter(s => !firstFeeds.some(f => f.url === s.url));
+        remainingFeeds.forEach(source => {
+          setTimeout(() => processFeed(source), Math.random() * 30000);
+        });
+      } catch (e) {
+        console.error("Fetch all feeds failed:", e);
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchAllFeeds();
-  }, []);
+    if (newsSources.length > 0) {
+      fetchAllFeeds();
+    }
+  }, [newsSources]);
 
   // Sync first 50 news items to localStorage for instant startup next time
   useEffect(() => {
@@ -643,27 +830,27 @@ export default function App() {
   }, [newsItems]);
 
   useEffect(() => {
-    if (selectedCategory !== 'all' && !showFavoritesOnly) {
+    if (selectedCategory !== 'all' && !showFavoritesOnly && newsSources.length > 0) {
       const catNews = newsItems.filter(item => 
         item.category.toLowerCase().includes(selectedCategory.toLowerCase()) ||
         selectedCategory.toLowerCase().includes(item.category.toLowerCase())
       );
       if (catNews.length < 5) {
-        const feeds = FEEDS.filter(f => 
+        const sources = newsSources.filter(f => 
           f.cat.toLowerCase().includes(selectedCategory.toLowerCase()) ||
           selectedCategory.toLowerCase().includes(f.cat.toLowerCase())
         );
-        feeds.forEach(async (feed) => {
-          const items = await fetchSingleFeed(feed);
+        sources.forEach(async (source) => {
+          const items = await fetchSingleFeed(source);
           setNewsItems(prev => {
             const existingIds = new Set(prev.map(item => item.id));
             const newItems = items.filter(item => !existingIds.has(item.id));
-            return [...prev, ...newItems.sort(() => Math.random() - 0.5)];
+            return [...prev, ...newItems].sort(() => Math.random() - 0.5);
           });
         });
       }
     }
-  }, [selectedCategory, showFavoritesOnly]);
+  }, [selectedCategory, showFavoritesOnly, newsSources]);
 
   const toggleFavorite = async (news: NewsItem) => {
     if (!user) {
@@ -1423,6 +1610,347 @@ export default function App() {
                 >
                   Rifiuto
                 </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Admin Shield Trigger */}
+      <button 
+        onClick={() => isAdminLoggedIn ? setShowAdminDashboard(true) : setShowAdminLogin(true)}
+        className="fixed bottom-6 left-6 z-[350] w-12 h-12 rounded-full bg-slate-900/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-slate-800/60 hover:border-white/20 transition-all active:scale-95 group shadow-lg"
+        title="Admin SEO"
+      >
+        <Shield className={`w-5 h-5 transition-colors ${isAdminLoggedIn ? 'text-indigo-400' : 'text-white/40'}`} />
+        <div className="absolute left-full ml-4 px-3 py-1 bg-black/80 backdrop-blur-md text-[10px] text-white/60 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap uppercase tracking-widest border border-white/5 font-bold">
+          Admin SEO
+        </div>
+      </button>
+
+      {/* Admin Login Modal */}
+      <AnimatePresence>
+        {showAdminLogin && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="w-full max-w-sm bg-slate-900 border border-white/10 rounded-3xl p-8 shadow-2xl overflow-hidden relative"
+            >
+              <button 
+                onClick={() => setShowAdminLogin(false)}
+                className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="text-center mb-8">
+                <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 flex items-center justify-center mx-auto mb-4 border border-indigo-500/20">
+                  <Lock className="w-8 h-8 text-indigo-400" />
+                </div>
+                <h3 className="text-xl font-bold text-white uppercase tracking-tight">Accesso Admin</h3>
+                <p className="text-sm text-white/40 mt-1 uppercase tracking-widest text-[10px] font-bold">Gestione SEO & Metadata</p>
+              </div>
+
+              <form onSubmit={handleAdminLogin} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] text-white/40 uppercase tracking-widest font-bold mb-2 ml-1">Username</label>
+                  <input 
+                    type="text" 
+                    value={adminUsername}
+                    onChange={(e) => setAdminUsername(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500/50 transition-colors placeholder:text-white/10"
+                    placeholder="Admin"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-white/40 uppercase tracking-widest font-bold mb-2 ml-1">Password</label>
+                  <input 
+                    type="password" 
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500/50 transition-colors placeholder:text-white/10"
+                    placeholder="••••••••"
+                    required
+                  />
+                </div>
+                {adminError && (
+                  <p className="text-red-400 text-[10px] font-bold uppercase tracking-wider text-center">{adminError}</p>
+                )}
+                <button 
+                  type="submit"
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl transition-all shadow-xl shadow-indigo-600/20 active:scale-95 uppercase tracking-widest text-xs mt-4"
+                >
+                  Accedi
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Admin Dashboard Modal */}
+      <AnimatePresence>
+        {showAdminDashboard && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[600] bg-black flex flex-col items-stretch h-full overflow-hidden"
+          >
+            <div className="flex flex-col sm:flex-row h-full">
+              {/* Sidebar */}
+              <div className="w-full sm:w-80 bg-slate-950 border-r border-white/10 flex flex-col shrink-0">
+                <div className="p-8 border-b border-white/5 bg-slate-900/40">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 border border-indigo-500/20">
+                      <Shield className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-black text-white uppercase tracking-tight">SpotSmart Panel</h2>
+                      <p className="text-[10px] text-white/40 uppercase tracking-[0.2em] font-black mt-0.5">Control Center</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <nav className="flex-1 overflow-y-auto p-4 py-8 space-y-2">
+                  <button 
+                    onClick={() => setAdminTab('seo')}
+                    className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all group ${adminTab === 'seo' ? 'bg-indigo-600/10 text-white border border-indigo-500/20 shadow-[0_0_20px_rgba(79,70,229,0.1)]' : 'text-white/40 hover:text-white hover:bg-white/5 border border-transparent'}`}
+                  >
+                    <Activity className={`w-5 h-5 transition-colors ${adminTab === 'seo' ? 'text-indigo-400' : 'text-white/40'}`} />
+                    <span className="text-xs font-black uppercase tracking-widest">SEO & Metadata</span>
+                    <ChevronRight className={`ml-auto w-4 h-4 transition-transform ${adminTab === 'seo' ? 'rotate-90 opacity-100' : 'opacity-0'}`} />
+                  </button>
+
+                  <button 
+                    onClick={() => setAdminTab('sources')}
+                    className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all group ${adminTab === 'sources' ? 'bg-emerald-600/10 text-white border border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.1)]' : 'text-white/40 hover:text-white hover:bg-white/5 border border-transparent'}`}
+                  >
+                    <Database className={`w-5 h-5 transition-colors ${adminTab === 'sources' ? 'text-emerald-400' : 'text-white/40'}`} />
+                    <span className="text-xs font-black uppercase tracking-widest">Fonti News RSS</span>
+                  </button>
+
+                  <button 
+                    onClick={() => setAdminTab('analytics')}
+                    className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all group ${adminTab === 'analytics' ? 'bg-amber-600/10 text-white border border-amber-500/20 shadow-[0_0_20px_rgba(245,158,11,0.1)]' : 'text-white/40 hover:text-white hover:bg-white/5 border border-transparent'}`}
+                  >
+                    <BarChart3 className={`w-5 h-5 transition-colors ${adminTab === 'analytics' ? 'text-amber-400' : 'text-white/40'}`} />
+                    <span className="text-xs font-black uppercase tracking-widest">Analytics & Traffico</span>
+                  </button>
+                </nav>
+
+                <div className="p-6 border-t border-white/5 bg-slate-900/20">
+                  <button 
+                    onClick={() => { setIsAdminLoggedIn(false); setShowAdminDashboard(false); }}
+                    className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-all text-xs font-black uppercase tracking-widest"
+                  >
+                    <LogOut className="w-4 h-4" /> Esci Sessione
+                  </button>
+                </div>
+              </div>
+
+              {/* Main Workspace */}
+              <div className="flex-1 overflow-y-auto bg-[#020617] p-6 md:p-12">
+                <div className="max-w-6xl mx-auto">
+                  
+                  {/* Tab: SEO & Metadata */}
+                  {adminTab === 'seo' && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                      <header className="mb-16 pb-8 border-b border-white/5">
+                        <h1 className="text-4xl font-black text-white uppercase tracking-tighter">SEO Optimization</h1>
+                        <p className="text-white/40 mt-2 uppercase tracking-[0.3em] text-[10px] font-bold">Gestione schede metadati ed indicizzazione schede categorie</p>
+                      </header>
+
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        {CATEGORIES.map(cat => {
+                          const config = seoConfigs[cat.id] || { title: '', description: '', keywords: '', adsense: '' };
+                          return (
+                            <div key={cat.id} className="bg-slate-900/40 border border-white/5 rounded-3xl p-8 hover:border-indigo-500/20 transition-all">
+                              <div className="flex items-center gap-5 mb-10">
+                                <div className={`w-14 h-14 rounded-2xl ${cat.color} bg-opacity-10 flex items-center justify-center text-white border border-white/5`}>
+                                  <cat.icon className="w-7 h-7" />
+                                </div>
+                                <div>
+                                  <h3 className="text-xl font-black text-white uppercase tracking-tighter">{cat.label}</h3>
+                                  <p className="text-[10px] text-white/30 uppercase tracking-widest font-black mt-1">/{cat.id}</p>
+                                </div>
+                              </div>
+                              <div className="space-y-6">
+                                <div>
+                                  <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-2">Meta Title</label>
+                                  <input type="text" defaultValue={config.title} onBlur={(e) => saveSeoConfig(cat.id, { ...config, title: e.target.value })} className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-white focus:outline-none focus:border-indigo-500/30" />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-2">Description</label>
+                                  <textarea rows={2} defaultValue={config.description} onBlur={(e) => saveSeoConfig(cat.id, { ...config, description: e.target.value })} className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-white focus:outline-none focus:border-indigo-500/30 resize-none" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-2">AdSense Script</label>
+                                    <input type="text" defaultValue={config.adsense} onBlur={(e) => saveSeoConfig(cat.id, { ...config, adsense: e.target.value })} className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-[9px] font-mono text-indigo-300" placeholder="<script...>" />
+                                  </div>
+                                  <div>
+                                    <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-2">Aggiornato</label>
+                                    <div className="h-[46px] flex items-center px-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl text-emerald-400 text-[10px] font-black uppercase tracking-widest">Live Sync OK</div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Tab: Sources RSS */}
+                  {adminTab === 'sources' && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                      <header className="mb-12 pb-8 border-b border-white/5 flex items-center justify-between">
+                        <div>
+                          <h1 className="text-4xl font-black text-white uppercase tracking-tighter">Fonti Feed RSS</h1>
+                          <p className="text-white/40 mt-2 uppercase tracking-[0.3em] text-[10px] font-bold">Configurazione flussi di notizie nazionali ed internazionali</p>
+                        </div>
+                        <div className="bg-emerald-500/10 border border-emerald-500/20 px-6 py-3 rounded-2xl flex items-center gap-3">
+                          <Database className="w-4 h-4 text-emerald-400" />
+                          <span className="text-xs font-black text-white uppercase tracking-widest">{newsSources.length} Fonti Attive</span>
+                        </div>
+                      </header>
+
+                      {/* Add Source Form */}
+                      <div className="bg-slate-900/60 border border-white/10 rounded-3xl p-8 mb-12 shadow-2xl">
+                        <div className="flex items-center gap-4 mb-8">
+                          <Plus className="w-5 h-5 text-indigo-400" />
+                          <h3 className="text-sm font-black text-white uppercase tracking-widest">Integra Nuova Fonte</h3>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                          <div className="md:col-span-1">
+                            <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-3 ml-1">Testata / Nome</label>
+                            <input value={newSource.name} onChange={e => setNewSource({...newSource, name: e.target.value})} type="text" placeholder="Es. Reuters IT" className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-white focus:outline-none focus:border-indigo-500/30" />
+                          </div>
+                          <div className="md:col-span-2">
+                             <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-3 ml-1">URL XML/RSS Feed</label>
+                             <input value={newSource.url} onChange={e => setNewSource({...newSource, url: e.target.value})} type="url" placeholder="https://testata.it/rss.xml" className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-white focus:outline-none focus:border-indigo-500/30" />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-3 ml-1">Categoria</label>
+                            <select value={newSource.cat} onChange={e => setNewSource({...newSource, cat: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-white focus:outline-none focus:border-indigo-500/30 appearance-none">
+                              {CATEGORIES.filter(c => c.id !== 'all').map(c => <option key={c.id} value={c.label}>{c.label}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                        <button onClick={addSource} className="mt-8 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-5 rounded-2xl transition-all uppercase tracking-widest text-[11px] shadow-xl shadow-indigo-600/20 active:scale-[0.98]">
+                          Aggiungi Fonte al Database
+                        </button>
+                      </div>
+
+                      {/* Sources List Grouped by Category */}
+                      <div className="space-y-12">
+                        {CATEGORIES.filter(c => c.id !== 'all').map(cat => {
+                          const catSources = newsSources.filter(s => s.cat === cat.label);
+                          if (catSources.length === 0) return null;
+                          return (
+                            <div key={cat.id} className="relative">
+                              <div className="flex items-center gap-4 mb-6">
+                                <div className={`w-8 h-8 rounded-lg ${cat.color} bg-opacity-10 border border-white/5 flex items-center justify-center text-white`}>
+                                  <cat.icon className="w-4 h-4" />
+                                </div>
+                                <h3 className="text-lg font-black text-white uppercase tracking-tighter">{cat.label}</h3>
+                                <div className="h-px bg-white/5 flex-1 ml-4" />
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                {catSources.map(source => (
+                                  <div key={source.id} className="bg-slate-900/30 border border-white/5 rounded-2xl p-5 hover:bg-slate-900 transition-all group">
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex-1 min-w-0 pr-4">
+                                        <p className="text-white font-bold text-sm truncate uppercase tracking-tight">{source.name}</p>
+                                        <p className="text-[10px] text-white/20 mt-1 truncate font-mono">{source.url}</p>
+                                      </div>
+                                      <button onClick={() => deleteSource(source.id)} className="w-8 h-8 rounded-lg bg-red-500/10 text-red-500 opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500/20 flex items-center justify-center">
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Tab: Analytics */}
+                  {adminTab === 'analytics' && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                      <header className="mb-16 pb-8 border-b border-white/5">
+                        <h1 className="text-4xl font-black text-white uppercase tracking-tighter">Analytics & Traffico</h1>
+                        <p className="text-white/40 mt-2 uppercase tracking-[0.3em] text-[10px] font-bold">Monitoraggio visibilità Google e configurazione tracking ID</p>
+                      </header>
+
+                      <div className="max-w-xl bg-slate-900 border border-white/10 rounded-3xl p-10">
+                        <div className="flex items-center gap-4 mb-10">
+                          <BarChart3 className="w-6 h-6 text-amber-400" />
+                          <h3 className="text-lg font-bold text-white uppercase tracking-tight">Impostazioni Google Analytics 4</h3>
+                        </div>
+                        <div className="space-y-8">
+                          <div>
+                            <label className="block text-[10px] text-white/30 uppercase tracking-widest font-black mb-3">Measurement ID (G-XXXXXXXXXX)</label>
+                            <input 
+                              type="text" 
+                              value={analyticsConfig.trackingId}
+                              onChange={e => setAnalyticsConfig({...analyticsConfig, trackingId: e.target.value})}
+                              placeholder="G-..." 
+                              className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-5 text-white font-mono focus:outline-none focus:border-amber-500/30 transition-all" 
+                            />
+                          </div>
+                          <div className="flex items-center justify-between p-6 bg-white/5 rounded-2xl border border-white/5">
+                            <div>
+                               <p className="text-xs font-bold text-white uppercase tracking-widest">Stato Tracking</p>
+                               <p className="text-[10px] text-white/30 mt-1 uppercase">Attiva o disattiva il tracciamento lato server</p>
+                            </div>
+                            <button 
+                              onClick={() => saveAnalytics({...analyticsConfig, enabled: !analyticsConfig.enabled})}
+                              className={`w-14 h-8 rounded-full p-1 transition-all ${analyticsConfig.enabled ? 'bg-amber-600' : 'bg-slate-700'}`}
+                            >
+                              <div className={`w-6 h-6 rounded-full bg-white transition-all ${analyticsConfig.enabled ? 'translate-x-6' : 'translate-x-0'}`} />
+                            </button>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-white/30 uppercase tracking-widest font-black mb-3">Google Search Console Verification Tag</label>
+                            <input 
+                              type="text" 
+                              value={analyticsConfig.verificationTag}
+                              onChange={e => setAnalyticsConfig({...analyticsConfig, verificationTag: e.target.value})}
+                              placeholder='<meta name="google-site-verification" content="..." />' 
+                              className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-5 text-white font-mono text-[10px] focus:outline-none focus:border-indigo-500/30 transition-all shadow-inner" 
+                            />
+                            <p className="text-[9px] text-indigo-400/50 mt-2 uppercase tracking-widest font-bold">Incolla l'intero tag meta fornito da Google</p>
+                          </div>
+                          <button 
+                            onClick={() => saveAnalytics(analyticsConfig)}
+                            className="w-full bg-amber-600 hover:bg-amber-700 text-white font-black py-5 rounded-2xl shadow-xl shadow-amber-600/20 transition-all uppercase tracking-widest text-[11px]"
+                          >
+                            Aggiorna Configurazione Traffico
+                          </button>
+                        </div>
+                        <div className="mt-12 p-6 rounded-2xl bg-amber-500/5 border border-amber-500/10 border-dashed">
+                          <p className="text-[10px] text-amber-400 uppercase tracking-widest font-black leading-relaxed">
+                            L'implementazione utilizza l'iniezione dinamica lato server per garantire che lo script sia presente nel primo pacchetto HTML inviato ai crawler di Google.
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                </div>
               </div>
             </div>
           </motion.div>

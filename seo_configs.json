@@ -1,0 +1,72 @@
+{
+  "all": {
+    "title": "SpotSmart Notizie 2024-2025 | Il tuo Hub Intelligente di Informazione",
+    "description": "SpotSmart 2024/2025: Il tuo hub intelligente per le notizie in tempo reale. Cronaca, Mondo, Tecnologia, Finanza e Scienza in un'unica piattaforma innovativa.",
+    "keywords": "notizie oggi, news tempo reale, attualità 2025, aggregatore notizie, informazione intelligente, spotsmart",
+    "url": "https://spotsmart.it/explore/all",
+    "adsense": ""
+  },
+  "cronaca": {
+    "title": "Ultime Notizie Cronaca Italia 2024-2025 | SpotSmart Live",
+    "description": "Resta aggiornato sulla cronaca italiana e internazionale: le ultime notizie, inchieste e approfondimenti sui fatti che contano. Aggiornamenti real-time da ANSA e Adnkronos.",
+    "keywords": "cronaca italia oggi, notizie cronaca ultime ore, inchieste giudiziarie, sicurezza urbana 2025, politica italiana news",
+    "url": "https://spotsmart.it/explore/cronaca",
+    "adsense": ""
+  },
+  "mondo": {
+    "title": "Notizie dal Mondo e Geopolitica 2025 | SpotSmart Estero",
+    "description": "Analisi approfondite su geopolitica, conflitti e sfide globali. Rimani informato sugli eventi che plasmano il nostro futuro con Reuters, BBC e fonti internazionali.",
+    "keywords": "notizie internazionali, geopolitica 2025, crisi medio oriente, elezioni usa 2024 analisi, breaking news mondo",
+    "url": "https://spotsmart.it/explore/mondo",
+    "adsense": ""
+  },
+  "regioni": {
+    "title": "Notizie Locali e Cronaca Regionale | SpotSmart Territorio",
+    "description": "Le voci del territorio italiano in tempo reale. Cronaca, eventi e politica locale da Messaggero, Gazzettino e le principali testate regionali.",
+    "keywords": "notizie locali, cronaca regionale, news territorio, gazzettino, messaggero, eventi città italia",
+    "url": "https://spotsmart.it/explore/regioni",
+    "adsense": ""
+  },
+  "tecnologia": {
+    "title": "Tecnologia, AI e Innovazione 2025 | SpotSmart Tech",
+    "description": "Scopri le innovazioni in AI generativa, robotica e cybersecurity. Il tuo portale sulle tendenze tech che stanno ridefinendo il futuro con Wired e TechCrunch.",
+    "keywords": "tecnologia 2025, ai generativa news, cybersecurity aziendale, robotica avanzata, realtà virtuale news, innovazione digitale",
+    "url": "https://spotsmart.it/explore/tecnologia",
+    "adsense": ""
+  },
+  "finanza": {
+    "title": "Economia e Finanza: Mercati e Borse 2025 | SpotSmart Business",
+    "description": "Previsioni mercati globali, investimenti e andamento economico. Analisi per decisioni informate con Il Sole 24 Ore e CNBC. Borsa Italiana in tempo reale.",
+    "keywords": "mercati finanziari 2025, investimenti sicuri, borsa italiana oggi, inflazione italia news, economia globale, trading online",
+    "url": "https://spotsmart.it/explore/finanza",
+    "adsense": ""
+  },
+  "sport": {
+    "title": "Ultime Notizie Sport, Risultati e Calciomercato | SpotSmart Sport",
+    "description": "Tutte le ultime notizie su Calcio Serie A, Tennis ATP, F1 e Olimpiadi. Risultati in diretta, interviste e analisi esclusive dalla Gazzetta e Tuttosport.",
+    "keywords": "risultati serie a 2025, calciomercato live, tennis atp news, formula 1 oggi, moto gp risultati, sport news italia",
+    "url": "https://spotsmart.it/explore/sport",
+    "adsense": ""
+  },
+  "scienza": {
+    "title": "Scienza, Spazio e Medicina 2025 | SpotSmart Science",
+    "description": "Le scoperte che cambiano il mondo. Dalle missioni spaziali NASA ai progressi della medicina e ricerca scientifica. Resta aggiornato con Nature e ScienceDaily.",
+    "keywords": "scoperte scientifiche 2025, esplorazione spaziale, news medicina 2024, astronomia nasa, ricerca scientifica innovazione",
+    "url": "https://spotsmart.it/explore/scienza",
+    "adsense": ""
+  },
+  "cultura": {
+    "title": "Cultura, Arte e Tendenze Sociali 2025 | SpotSmart Culture",
+    "description": "Esplora le nuove tendenze artistiche, letterarie e sociali. Approfondimenti su eventi, mostre e il dibattito culturale contemporaneo in Italia e nel mondo.",
+    "keywords": "eventi culturali 2025, arte contemporanea news, libri novità, festival cinema italia, tendenze sociali, mostre d'arte",
+    "url": "https://spotsmart.it/explore/cultura",
+    "adsense": ""
+  },
+  "salute": {
+    "title": "Salute, Benessere e News Sanità Italia | SpotSmart Health",
+    "description": "Le ultime notizie sulla sanità pubblica, consigli per il benessere e aggiornamenti sulla prevenzione. Prendi cura di te con informazioni mediche affidabili.",
+    "keywords": "sanità italia 2025, benessere mentale news, prevenzione malattie, alimentazione sana, news medicina, stili di vita sani",
+    "url": "https://spotsmart.it/explore/salute",
+    "adsense": ""
+  }
+}
