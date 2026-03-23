@@ -653,28 +653,36 @@ export default function App() {
   };
 
   const saveAnalytics = async (data: any) => {
+    setIsSavingAdsense(true);
     try {
-      const res = await fetch('/api/admin/analytics', {
+      // Save to Firestore (Available even on Vercel)
+      await setDoc(doc(db, 'configs', 'analytics'), { ...data, updatedAt: Timestamp.now() }, { merge: true });
+      
+      // Attempt local sync (for local dev dev server)
+      fetch('/api/admin/analytics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          auth: { username: 'admin', password: 'accessometti' },
-          data 
-        })
-      });
-      if (res.ok) alert("Configurazione Traffico salvata correttamente!");
+        body: JSON.stringify({ auth: { username: 'admin', password: 'accessometti' }, data })
+      }).catch(() => {});
+
+      setSaveStatus({ type: 'success', message: 'Configurazione Analitica salvata con successo!' });
     } catch (err) {
       console.error(err);
-      alert("Errore durante il salvataggio.");
+      setSaveStatus({ type: 'error', message: 'Errore durante il salvataggio su Cloud Firestore.' });
+    } finally {
+      setIsSavingAdsense(false);
     }
   };
 
   const saveAdSense = async (data: any) => {
-    console.log("[AdSense] Attempting to save to '/api/admin/adsense'...", data);
     setIsSavingAdsense(true);
     setSaveStatus({ type: null, message: '' });
 
     try {
+      // 1. Save to Cloud Firestore (Works online/Vercel)
+      await setDoc(doc(db, 'configs', 'adsense'), { ...data, updatedAt: Timestamp.now() }, { merge: true });
+
+      // 2. Attempt local server sync (for local development features)
       const res = await fetch('/api/admin/adsense', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -684,25 +692,23 @@ export default function App() {
         })
       });
 
-      const text = await res.text();
-      console.log("[AdSense] API Result:", text);
-
       if (res.ok) {
         setSaveStatus({ 
           type: 'success', 
-          message: 'Configurazione AdSense salvata con successo! Le modifiche sono state salvate nel file adsense_config.json e sono ora attive sul sito.' 
+          message: 'Configurazione AdSense salvata con successo nel cloud e localmente! Le modifiche sono ora attive per la verifica di Google AdSense.' 
         });
       } else {
+        // Still success if Firestore worked but server didn't (common on Vercel)
         setSaveStatus({ 
-          type: 'error', 
-          message: `Errore del Server: ${text}. Verifica che il server sia aggiornato all'ultima versione.` 
+          type: 'success', 
+          message: 'Configurazione salvata nel Cloud (Firebase). Il server locale non è stato aggiornato, ma il sito principale è ora configurato.' 
         });
       }
     } catch (err) {
-      console.error("[AdSense] Fetch crash:", err);
+      console.error("[AdSense] Save failed:", err);
       setSaveStatus({ 
         type: 'error', 
-        message: 'Errore di connessione: Impossibile raggiungere il server. Verifica che npm run dev sia attivo e riavvia il processo se necessario.' 
+        message: 'Errore di salvataggio: Impossibile sincronizzare con i server. Verifica la connessione Firebase.' 
       });
     } finally {
       setIsSavingAdsense(false);

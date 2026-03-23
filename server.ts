@@ -5,6 +5,19 @@ import fs from "fs";
 import cors from "cors";
 import Parser from "rss-parser";
 import * as cheerio from "cheerio";
+import { initializeApp } from 'firebase/app';
+import { getFirestore, doc, getDoc } from 'firebase/firestore';
+
+// Load Firebase Config for Cloud Sync
+let db: any = null;
+try {
+  const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf-8"));
+  const app = initializeApp(firebaseConfig);
+  db = getFirestore(app);
+  console.log("[Firebase] initialized for backend sync");
+} catch (e) {
+  console.warn("[Firebase] Could not initialize sync, falling back to local files only:", e instanceof Error ? e.message : String(e));
+}
 
 const DATA_DIR = path.join(process.cwd(), ".data");
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -98,15 +111,47 @@ function getSeoConfigs() {
 }
 function saveSeoConfigs(configs: any) { fs.writeFileSync(SEO_FILE, JSON.stringify(configs, null, 2)); }
 
-function getAnalytics() {
-  try { return JSON.parse(fs.readFileSync(ANALYTICS_FILE, "utf-8")); } catch (err) { return { trackingId: "" }; }
+// Config Cache for Production/Cloud
+let cachedAdSense: any = null;
+let cachedAnalytics: any = null;
+let lastSync = 0;
+
+async function syncCloudConfigs() {
+  if (!db) return;
+  const now = Date.now();
+  if (now - lastSync < 60000 && cachedAdSense) return; // Sync every 60s max per instance
+
+  try {
+    const adsDoc = await getDoc(doc(db, 'configs', 'adsense'));
+    if (adsDoc.exists()) cachedAdSense = adsDoc.data();
+    
+    const anaDoc = await getDoc(doc(db, 'configs', 'analytics'));
+    if (anaDoc.exists()) cachedAnalytics = anaDoc.data();
+    
+    lastSync = now;
+    console.log("[Cloud] Configs synced from Firestore");
+  } catch (e) {
+    console.warn("[Cloud] Sync failed, using local/cache fallback:", e);
+  }
 }
-function saveAnalytics(data: any) { fs.writeFileSync(ANALYTICS_FILE, JSON.stringify(data, null, 2)); }
+
+function getAnalytics() {
+  if (cachedAnalytics) return cachedAnalytics;
+  try { return JSON.parse(fs.readFileSync(ANALYTICS_FILE, "utf-8")); } 
+  catch (err) { return { trackingId: "", enabled: true, verificationTag: "" }; }
+}
+function saveAnalytics(data: any) { 
+  try { fs.writeFileSync(ANALYTICS_FILE, JSON.stringify(data, null, 2)); } catch(e) {}
+}
 
 function getAdSense() {
-  try { return JSON.parse(fs.readFileSync(ADSENSE_FILE, "utf-8")); } catch (err) { return DEFAULT_ADSENSE; }
+  if (cachedAdSense) return cachedAdSense;
+  try { return JSON.parse(fs.readFileSync(ADSENSE_FILE, "utf-8")); } 
+  catch (err) { return DEFAULT_ADSENSE; }
 }
-function saveAdSense(data: any) { fs.writeFileSync(ADSENSE_FILE, JSON.stringify(data, null, 2)); }
+function saveAdSense(data: any) { 
+  try { fs.writeFileSync(ADSENSE_FILE, JSON.stringify(data, null, 2)); } catch(e) {}
+}
 
 function getSources() {
   try { return JSON.parse(fs.readFileSync(SOURCES_FILE, "utf-8")); } catch (err) { return []; }
@@ -209,7 +254,8 @@ app.use(cors());
 app.use(express.json());
 
 // Ads.txt for AdSense
-app.get("/ads.txt", (req, res) => {
+app.get("/ads.txt", async (req, res) => {
+  await syncCloudConfigs();
   const adsense = getAdSense();
   res.header("Content-Type", "text/plain");
   res.send(adsense.adsTxt || "google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0");
@@ -536,6 +582,7 @@ async function startServer() {
     app.get("*", async (req, res, next) => {
       const url = req.originalUrl;
       try {
+        await syncCloudConfigs(); // Ensure fresh config for injection
         let template = fs.readFileSync(path.resolve(process.cwd(), "index.html"), "utf-8");
         template = await vite.transformIndexHtml(url, template);
         
@@ -545,9 +592,7 @@ async function startServer() {
         const analytics = getAnalytics();
         const adsense = getAdSense();
         
-        // Track the visit realserver-side
         recordVisit();
-
         const html = injectMetadata(template, config, analytics, adsense, url);
         res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
       } catch (e) {
@@ -558,19 +603,17 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.get("*", async (req, res) => {
+      await syncCloudConfigs(); // Cloud sync on production
       const urlPath = req.path.split('/').pop() || 'all';
       const configs = getSeoConfigs();
       const config = configs[urlPath] || configs.all;
       const analytics = getAnalytics();
       const adsense = getAdSense();
       
-      // Track real visit
       recordVisit();
-
       const template = fs.readFileSync(path.join(distPath, "index.html"), "utf-8");
       const html = injectMetadata(template, config, analytics, adsense, req.originalUrl);
-      
       res.send(html);
     });
   }
