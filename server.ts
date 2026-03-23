@@ -6,7 +6,7 @@ import cors from "cors";
 import Parser from "rss-parser";
 import * as cheerio from "cheerio";
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDoc } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 
 // Load Firebase Config for Cloud Sync
 let db: any = null;
@@ -106,10 +106,18 @@ if (!fs.existsSync(SEO_FILE)) fs.writeFileSync(SEO_FILE, JSON.stringify(DEFAULT_
 if (!fs.existsSync(ANALYTICS_FILE)) fs.writeFileSync(ANALYTICS_FILE, JSON.stringify({ trackingId: "", enabled: true, verificationTag: "" }, null, 2));
 if (!fs.existsSync(ADSENSE_FILE)) fs.writeFileSync(ADSENSE_FILE, JSON.stringify(DEFAULT_ADSENSE, null, 2));
 
+let cachedSeo: any = null;
 function getSeoConfigs() {
-  try { return JSON.parse(fs.readFileSync(SEO_FILE, "utf-8")); } catch (err) { return DEFAULT_SEO; }
+  if (cachedSeo) return cachedSeo;
+  try { 
+    cachedSeo = JSON.parse(fs.readFileSync(SEO_FILE, "utf-8")); 
+    return cachedSeo;
+  } catch (err) { return DEFAULT_SEO; }
 }
-function saveSeoConfigs(configs: any) { fs.writeFileSync(SEO_FILE, JSON.stringify(configs, null, 2)); }
+function saveSeoConfigs(configs: any) { 
+  cachedSeo = configs;
+  fs.writeFileSync(SEO_FILE, JSON.stringify(configs, null, 2)); 
+}
 
 // Config Cache for Production/Cloud
 let cachedAdSense: any = null;
@@ -127,9 +135,12 @@ async function syncCloudConfigs() {
     
     const anaDoc = await getDoc(doc(db, 'configs', 'analytics'));
     if (anaDoc.exists()) cachedAnalytics = anaDoc.data();
+
+    const seoDoc = await getDoc(doc(db, 'configs', 'seo'));
+    if (seoDoc.exists()) cachedSeo = seoDoc.data();
     
     lastSync = now;
-    console.log("[Cloud] Configs synced from Firestore");
+    console.log("[Cloud] All configs synced from Firestore");
   } catch (e) {
     console.warn("[Cloud] Sync failed, using local/cache fallback:", e);
   }
@@ -183,6 +194,22 @@ function recordVisit() {
   return memoryTraffic;
 }
 
+function resetTraffic() {
+  memoryTraffic = { 
+    total: 0, 
+    today: 0, 
+    lastUpdate: new Date().toDateString(), 
+    history: {} 
+  };
+  isTrafficDirty = true;
+  // Also try to clear in Firestore if we have a connection
+  if (db) {
+     setDoc(doc(db, 'traffic', 'stats'), { ...memoryTraffic, lastUpdate: memoryTraffic.lastUpdate })
+       .catch(e => console.error("[Cloud] Traffic reset sync failed:", e));
+  }
+  return memoryTraffic;
+}
+
 // Persist to disk every 30 seconds if dirty, to avoid triggering watchers constantly
 setInterval(() => {
   if (isTrafficDirty) {
@@ -212,7 +239,7 @@ const parser = new Parser({
 
 // Helper for SEO Injection
 function injectMetadata(html: string, config: any, analytics: any, adsense: any, reqUrl: string) {
-  const gaScript = (analytics.enabled && analytics.trackingId) ? `
+  const gaScript = (analytics?.enabled && analytics?.trackingId) ? `
     <script async src="https://www.googletagmanager.com/gtag/js?id=${analytics.trackingId}"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
@@ -222,32 +249,62 @@ function injectMetadata(html: string, config: any, analytics: any, adsense: any,
     </script>
   ` : '';
 
-  const adsenseScript = (adsense.enabled && adsense.script && adsense.script.trim().startsWith('<')) ? adsense.script : '';
-  const adsenseMeta = (adsense.enabled && adsense.metaTag && adsense.metaTag.trim().startsWith('<')) ? adsense.metaTag : '';
-  const analyticsMeta = (analytics.enabled && analytics.verificationTag && analytics.verificationTag.trim().startsWith('<')) ? analytics.verificationTag : '';
+  let adsenseHead = "";
+  let adsenseBody = "";
+  
+  if (adsense?.enabled && adsense?.script) {
+     const scriptStr = adsense.script.trim();
+     if (scriptStr.includes('<amp-auto-ads')) {
+        // Extract script part for head
+        const scriptMatch = scriptStr.match(/<script.*?src=.*?amp-auto-ads.*?><\/script>/i);
+        adsenseHead = scriptMatch ? scriptMatch[0] : "";
+        
+        // Extract tag part for body
+        const tagMatch = scriptStr.match(/<amp-auto-ads.*?>.*?<\/amp-auto-ads>/i);
+        adsenseBody = tagMatch ? tagMatch[0] : "";
+        
+        // If they provided both but regex failed or they are separate, try to find the tag anywhere
+        if (!adsenseBody && scriptStr.includes('<amp-auto-ads')) {
+           adsenseBody = scriptStr.includes('</amp-auto-ads>') 
+              ? scriptStr.substring(scriptStr.indexOf('<amp-auto-ads'), scriptStr.indexOf('</amp-auto-ads>') + 15)
+              : scriptStr; 
+        }
+     } else {
+        adsenseHead = scriptStr;
+     }
+  }
+
+  const adsenseMeta = (adsense?.enabled && adsense?.metaTag && adsense?.metaTag.trim().startsWith('<')) ? adsense.metaTag : '';
+  const analyticsMeta = (analytics?.enabled && analytics?.verificationTag && analytics?.verificationTag.trim().startsWith('<')) ? analytics.verificationTag : '';
 
   let injected = html;
   
-  // 1. Title (always present in index.html)
-  injected = injected.replace(/<title>(.*?)<\/title>/i, `<title>${config.title}</title>`);
+  // 1. Title
+  injected = injected.replace(/<title>(.*?)<\/title>/i, `<title>${config?.title || "SpotSmart"}</title>`);
   
-  // 2. Prepare ALL SEO & Analytics Tags
-  const seoTags = `
-    <meta name="description" content="${config.description}" />
-    <meta name="keywords" content="${config.keywords}" />
-    <meta property="og:title" content="${config.title}" />
-    <meta property="og:description" content="${config.description}" />
+  // 2. Head Tags
+  const headTags = `
+    <meta name="description" content="${config?.description || ""}" />
+    <meta name="keywords" content="${config?.keywords || ""}" />
+    <meta property="og:title" content="${config?.title || ""}" />
+    <meta property="og:description" content="${config?.description || ""}" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://spotsmart.it${reqUrl}" />
     <link rel="canonical" href="https://spotsmart.it${reqUrl}" />
     ${analyticsMeta}
     ${adsenseMeta}
-    ${adsenseScript}
+    ${adsenseHead}
     ${gaScript}
   `;
+  
+  injected = injected.replace(/<\/head>/i, `${headTags}</head>`);
+  
+  // 3. Body Tags (right after <body>)
+  if (adsenseBody) {
+     injected = injected.replace(/<body.*?>/i, (match) => `${match}\n${adsenseBody}`);
+  }
 
-  recordVisit();
-  return injected.replace(/<\/head>/i, `${seoTags}</head>`);
+  return injected;
 }
 
 app.use(cors());
@@ -615,14 +672,18 @@ app.get("/api/news", async (req, res) => {
   }
 });
 
-app.get("/api/admin/seo", (req, res) => res.json(getSeoConfigs()));
+app.get("/api/admin/seo", async (req, res) => {
+  await syncCloudConfigs();
+  res.json(getSeoConfigs());
+});
 
-app.post("/api/admin/seo", express.json(), (req, res) => {
+app.post("/api/admin/seo", express.json(), async (req, res) => {
   const { auth, category, data } = req.body;
   if (auth?.username !== 'admin' || auth?.password !== 'accessometti') return res.status(401).send("Unauthorized");
   const current = getSeoConfigs();
   current[category] = data;
   saveSeoConfigs(current);
+  if (db) await setDoc(doc(db, 'configs', 'seo'), current).catch(console.error);
   res.send("Saved");
 });
 
@@ -634,34 +695,46 @@ app.post("/api/admin/sources", express.json(), (req, res) => {
   res.send("Saved");
 });
 
-app.get("/api/admin/analytics", (req, res) => res.json(getAnalytics()));
-app.post("/api/admin/analytics", express.json(), (req, res) => {
+app.get("/api/admin/analytics", async (req, res) => {
+  await syncCloudConfigs();
+  res.json(getAnalytics());
+});
+
+app.post("/api/admin/analytics", express.json(), async (req, res) => {
   const { auth, data } = req.body;
   if (auth?.username !== 'admin' || auth?.password !== 'accessometti') return res.status(401).send("Unauthorized");
   saveAnalytics(data);
+  cachedAnalytics = data;
+  if (db) await setDoc(doc(db, 'configs', 'analytics'), data).catch(console.error);
   res.send("Saved");
 });
 
-app.get("/api/admin/adsense", (req, res) => {
+app.get("/api/admin/adsense", async (req, res) => {
+  await syncCloudConfigs();
   const data = getAdSense();
-  console.log(`[AdSense] GET Config: ${data.enabled ? 'Enabled' : 'Disabled'}`);
   res.json(data);
 });
 
-app.post("/api/admin/adsense", express.json(), (req, res) => {
+app.post("/api/admin/adsense", express.json(), async (req, res) => {
   const { auth, data } = req.body;
-  if (auth?.username !== 'admin' || auth?.password !== 'accessometti') {
-    console.warn("[AdSense] Unauthorized save attempt blocked");
-    return res.status(401).send("Unauthorized");
-  }
+  if (auth?.username !== 'admin' || auth?.password !== 'accessometti') return res.status(401).send("Unauthorized");
   
-  if (!data) {
-    console.warn("[AdSense] Missing data in POST request");
-    return res.status(400).send("No data provided");
+  if (!data) return res.status(400).send("No data provided");
+
+  // Instant update memory to avoid loop/delay
+  cachedAdSense = data;
+  saveAdSense(data);
+
+  // Sync to Cloud as well
+  if (db) {
+    try {
+      await setDoc(doc(db, 'configs', 'adsense'), data);
+      console.log("[Cloud] AdSense synced to Firestore successfully");
+    } catch (e) {
+      console.error("[Cloud] AdSense sync failed:", e);
+    }
   }
 
-  console.log("[AdSense] Successfully saving new configuration to JSON");
-  saveAdSense(data);
   res.send("Saved Successfully");
 });
 
@@ -672,9 +745,12 @@ app.get("/ads.txt", (req, res) => {
   res.send(adsense.adsTxt || "");
 });
 
-// Real Traffic API
-app.get("/api/admin/traffic", (req, res) => {
-  res.json(memoryTraffic);
+app.get("/api/admin/traffic", (req, res) => res.json(memoryTraffic));
+app.post("/api/admin/traffic/reset", express.json(), (req, res) => {
+  const { auth } = req.body;
+  if (auth?.username !== 'admin' || auth?.password !== 'accessometti') return res.status(401).send("Unauthorized");
+  const resetData = resetTraffic();
+  res.json(resetData);
 });
 
 async function startServer() {
@@ -699,7 +775,7 @@ async function startServer() {
         let template = fs.readFileSync(path.resolve(process.cwd(), "index.html"), "utf-8");
         template = await vite.transformIndexHtml(url, template);
         
-        const urlPath = req.path.split('/').pop() || 'all';
+        const urlPath = req.path.split('/').filter(Boolean).pop()?.toLowerCase() || 'all';
         const configs = getSeoConfigs();
         const config = configs[urlPath] || configs.all;
         const analytics = getAnalytics();
@@ -718,7 +794,7 @@ async function startServer() {
     app.use(express.static(distPath));
     app.get("*", async (req, res) => {
       await syncCloudConfigs(); // Cloud sync on production
-      const urlPath = req.path.split('/').pop() || 'all';
+      const urlPath = req.path.split('/').filter(Boolean).pop()?.toLowerCase() || 'all';
       const configs = getSeoConfigs();
       const config = configs[urlPath] || configs.all;
       const analytics = getAnalytics();

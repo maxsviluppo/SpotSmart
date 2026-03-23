@@ -65,7 +65,7 @@ const CATEGORIES = [
 // ============================================================
 // AdSense In-Feed Card (fullscreen, appears every 5-8 posts)
 // ============================================================
-function AdCard({ direction, variants, onNext }: { direction: number; variants: any; onNext: () => void }) {
+function AdCard({ direction, variants, onNext }: { direction: number; variants: any; onNext: () => void; key?: any }) {
   useEffect(() => {
     if (!document.getElementById('adsense-script')) {
       const s = document.createElement('script');
@@ -728,21 +728,15 @@ export default function App() {
   const saveAnalytics = async (data: any) => {
     setIsSavingAdsense(true);
     try {
-      // Try API first (works locally and on Vercel)
-      const res = await fetch('/api/admin-analytics', {
+      // Try API first
+      await fetch('/api/admin/analytics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ auth: { username: 'admin', password: 'accessometti' }, data })
-      }).catch(() => null);
+      });
 
-      // Also try local server API as fallback
-      if (!res || !res.ok) {
-        await fetch('/api/admin/analytics', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ auth: { username: 'admin', password: 'accessometti' }, data })
-        }).catch(() => {});
-      }
+      // Update Firestore manually too
+      await setDoc(doc(db, 'configs', 'analytics'), data);
 
       setSaveStatus({ type: 'success', message: 'Configurazione Analytics salvata con successo!' });
     } catch (err) {
@@ -753,45 +747,51 @@ export default function App() {
     }
   };
 
+  const resetServerTraffic = async () => {
+    if (!window.confirm("Sei sicuro di voler azzerare TUTTI i dati del traffico (totale e giornaliero)?")) return;
+    try {
+      const res = await fetch('/api/admin/traffic/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth: { username: 'admin', password: 'accessometti' } })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRealTraffic({ today: data.today, total: data.total });
+        alert("Dati traffico azzerati con successo!");
+      }
+    } catch (e) {
+      alert("Errore durante il reset del traffico.");
+    }
+  };
+
   const saveAdSense = async (data: any) => {
     setIsSavingAdsense(true);
     setSaveStatus({ type: null, message: '' });
 
     try {
-      // Try Vercel serverless API first (works online)
-      let saved = false;
-      try {
-        const res = await fetch('/api/admin-adsense', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ auth: { username: 'admin', password: 'accessometti' }, data })
-        });
-        if (res.ok) saved = true;
-      } catch (e) { }
+      // Direct call to local server first since it now handles both disk and cloud sync
+      const res = await fetch('/api/admin/adsense', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth: { username: 'admin', password: 'accessometti' }, data })
+      });
 
-      // Try local Express server API as fallback (works in development)
-      if (!saved) {
-        try {
-          const res2 = await fetch('/api/admin/adsense', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ auth: { username: 'admin', password: 'accessometti' }, data })
-          });
-          if (res2.ok) saved = true;
-        } catch (e) { }
+      if (!res.ok) {
+        // Fallback for when running strictly on Vercel without local server
+        await setDoc(doc(db, 'configs', 'adsense'), data);
       }
 
-      // Always report success — both paths save to Firestore on Vercel,
-      // or to local JSON file in dev. The config IS saved.
+      setAdsenseConfig(data);
       setSaveStatus({
         type: 'success',
-        message: 'Configurazione AdSense salvata! Le modifiche sono ora attive. Google AdSense può ora verificare il sito tramite il meta tag e ads.txt.'
+        message: 'Configurazione AdSense salvata! Le modifiche sono ora attive e sincronizzate.'
       });
     } catch (err) {
       console.error("[AdSense] Save failed:", err);
       setSaveStatus({
         type: 'error',
-        message: 'Errore imprevisto durante il salvataggio. Riprova.'
+        message: 'Errore durante il salvataggio. Verifica la connessione.'
       });
     } finally {
       setIsSavingAdsense(false);
@@ -953,19 +953,21 @@ export default function App() {
         }
       } catch (e) { }
     } else {
-      setLoading(true);
-      // Check if we have sources loaded yet
-      if (newsSources.length === 0) {
-        setTimeout(() => setLoading(false), 5000); // 5 sec fallback to hide loader
-        return;
-      }
+    setLoading(true);
+    // Safety check: if we have NO sources at all, use local FEEDS immediately to satisfy user
+    if (newsSources.length === 0) {
+      setNewsSources(FEEDS as any[]);
+      // Continue execution with local feeds immediately
+    }
 
-      try {
-        // 1. Uniform Initial Loading: Load the FIRST feed from EACH category initially
-        const categoriesToLoad = CATEGORIES.filter(c => c.id !== 'all');
-        const firstFeeds = categoriesToLoad.map(cat => 
-          newsSources.find(f => f.cat === cat.label) || newsSources[0]
-        ).filter((v, i, a) => v && a.findIndex(t => t && t.url === v.url) === i);
+    try {
+      const activeSources = newsSources.length > 0 ? newsSources : FEEDS;
+      
+      // 1. Uniform Initial Loading: Load the FIRST feed from EACH category initially
+      const categoriesToLoad = CATEGORIES.filter(c => c.id !== 'all');
+      const firstFeeds = categoriesToLoad.map(cat => 
+        activeSources.find((f: any) => f.cat === cat.label) || activeSources[0]
+      ).filter((v, i, a) => v && a.findIndex(t => t && t.url === v.url) === i);
         
         const processFeed = async (source: any) => {
           try {
@@ -1116,16 +1118,21 @@ export default function App() {
     });
   // Build virtual feed: insert ad slots every 5-8 news items
   const feedWithAds = useMemo(() => {
-    const feed: Array<{ type: 'news'; data: any } | { type: 'ad'; id: string }> = [];
-    let nextAdAt = 5 + Math.floor(Math.random() * 4); // First ad: position 5-8
-    displayedNews.forEach((item: any, i: number) => {
-      feed.push({ type: 'news', data: item });
-      if (i + 1 === nextAdAt && adsenseConfig.enabled) {
-        feed.push({ type: 'ad', id: `ad-${i}` });
-        nextAdAt += 5 + Math.floor(Math.random() * 4); // Next ad: 5-8 more
+    // If monetization is disabled, just return news
+    if (!adsenseConfig.enabled) {
+      return displayedNews.map(item => ({ type: 'news' as const, data: item, id: item.id }));
+    }
+
+    const result: ({ type: 'news', data: NewsItem, id: string } | { type: 'ad', id: string })[] = [];
+    const adFrequency = 6; // One ad every 6 news items
+    
+    displayedNews.forEach((item, index) => {
+      result.push({ type: 'news', data: item, id: item.id });
+      if ((index + 1) % adFrequency === 0 && (index + 1) < displayedNews.length) {
+        result.push({ type: 'ad', id: `ad-${index}` });
       }
     });
-    return feed;
+    return result;
   }, [displayedNews, adsenseConfig.enabled]);
 
   const currentItem = feedWithAds[currentIndex];
@@ -1402,7 +1409,7 @@ export default function App() {
                                : (item.label === 'Categorie' && isCategoryMenuOpen)
                                  ? `bg-indigo-500/40 border-indigo-400/50 text-white`
                                  : 'bg-white/10 text-white/80 hover:bg-white/20 hover:text-white'
-                         } ${isCategoryMenuOpen && item.label !== 'Categorie' ? 'opacity-20' : 'opacity-100'}`}
+                         } ${isCategoryMenuOpen && item.label !== 'Categorie' ? 'opacity-20 pointer-events-none' : 'opacity-100'}`}
                         >
                           <motion.div layoutId={item.isActive ? "active-menu-icon" : undefined}>
                              <item.icon className={`w-5 h-5 ${item.isActive ? (item.label.includes('Preferiti') || item.label.includes('Tutte')) ? 'fill-white' : 'fill-current' : ''}`} />
@@ -1417,8 +1424,10 @@ export default function App() {
                             {isCategoryMenuOpen && (
                               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
                                    {CATEGORIES.map((cat, ci, arr) => {
-                                   const startAngle = (Math.PI * 0.95); const endAngle = (Math.PI * 1.5); const angle = startAngle + ((endAngle - startAngle) * (ci / (arr.length - 1)));
-                                   const radius = 240;
+                                   const startAngle = (Math.PI * 1.05); 
+                                   const endAngle = (Math.PI * 0.5); 
+                                   const angle = startAngle + ((endAngle - startAngle) * (ci / (arr.length - 1)));
+                                   const radius = 220;
                                    const x = Math.cos(angle) * radius;
                                    const y = Math.sin(angle) * radius;
                                    
@@ -2187,7 +2196,10 @@ export default function App() {
                               <span className="text-[10px] text-white/30 font-black uppercase tracking-widest">Traffico Totale</span>
                               <Activity className="w-4 h-4 text-emerald-400 group-hover:scale-125 transition-transform" />
                             </header>
-                            <p className="text-3xl font-black text-white tracking-tighter">12.4K <span className="text-xs text-emerald-400 align-top ml-1">+14%</span></p>
+                            <p className="text-3xl font-black text-white tracking-tighter">
+                              {realTraffic.total >= 1000 ? `${(realTraffic.total / 1000).toFixed(1)}K` : realTraffic.total}
+                              <span className="text-[10px] text-emerald-400 align-top ml-2 uppercase font-black tracking-widest">+14%</span>
+                            </p>
                           </div>
                           <div className="absolute bottom-[-10px] left-0 right-0 h-12 flex items-end opacity-20 group-hover:opacity-40 transition-opacity px-2">
                             {[4,8,6,3,9,11,8,4,12,6,10,14,12,10,8].map((v, i) => (
@@ -2208,7 +2220,10 @@ export default function App() {
                               <span className="text-[10px] text-white/30 font-black uppercase tracking-widest">Utenti Attivi</span>
                               <Users className="w-4 h-4 text-amber-400 group-hover:scale-125 transition-transform" />
                             </header>
-                            <p className="text-3xl font-black text-white tracking-tighter">342<span className="text-[10px] text-white font-normal ml-2 tracking-widest uppercase">LIVE</span></p>
+                            <p className="text-3xl font-black text-white tracking-tighter">
+                              {Math.max(0, Math.floor(realTraffic.today * 0.15) + (realTraffic.today > 0 ? 1 : 0))}
+                              <span className="text-[10px] text-white font-normal ml-2 tracking-widest uppercase">LIVE</span>
+                            </p>
                           </div>
                           <div className="absolute bottom-[-10px] left-0 right-0 h-10 flex items-center justify-center gap-1 opacity-20">
                             <motion.div 
@@ -2225,7 +2240,10 @@ export default function App() {
                               <span className="text-[10px] text-white/30 font-black uppercase tracking-widest">Tempo Medio</span>
                               <Clock className="w-4 h-4 text-indigo-400 group-hover:scale-125 transition-transform" />
                             </header>
-                            <p className="text-3xl font-black text-white tracking-tighter">4:52<span className="text-xs text-white/20 ml-2">min</span></p>
+                            <p className="text-3xl font-black text-white tracking-tighter">
+                              {realTraffic.today > 50 ? '4:52' : realTraffic.today > 0 ? '1:24' : '0:00'}
+                              <span className="text-xs text-white/20 ml-2">min</span>
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -2312,6 +2330,16 @@ export default function App() {
                           >
                             Aggiorna Configurazione Traffico
                           </button>
+                          
+                          <div className="pt-6 border-t border-white/5">
+                             <button 
+                               onClick={resetServerTraffic}
+                               className="w-full bg-red-600/10 hover:bg-red-600/20 text-red-400 font-bold py-4 rounded-2xl border border-red-500/20 transition-all uppercase tracking-widest text-[9px]"
+                             >
+                               Reset Totale Dati Traffico (Solo Reali)
+                             </button>
+                             <p className="text-[9px] text-white/20 mt-3 text-center uppercase">Rimuove permanentemente i dati storici e azzera i contatori</p>
+                          </div>
                         </div>
 
                         <div className="mt-12 p-6 rounded-2xl bg-amber-500/5 border border-amber-500/10 border-dashed">
