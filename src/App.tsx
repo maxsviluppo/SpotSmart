@@ -174,8 +174,8 @@ function NewsCard({
     const requiresProxy = blockedSites.some(site => secureUrl.toLowerCase().includes(site));
     
     if (requiresProxy) {
-       // Switch to codetabs because corsproxy.io is currently giving 403 Forbidden
-       return `https://api.codetabs.com/v1/proxy/?url=${encodeURIComponent(secureUrl)}`;
+       // Switch to codetabs using the correct parameter 'quest=' and no trailing slash
+       return `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(secureUrl)}`;
     }
     return secureUrl;
   };
@@ -319,7 +319,7 @@ function NewsCard({
                     <motion.div
                       initial={{ scale: 0, rotate: -45 }}
                       animate={{ scale: 1, rotate: 0 }}
-                      className="w-6 h-6 rounded-full bg-pink-500 flex items-center justify-center shadow-[0_0_15px_rgba(236,72,153,0.6)]"
+                      className="w-6 h-6 rounded-full bg-red-600 flex items-center justify-center shadow-[0_0_15px_rgba(220,38,38,0.6)]"
                     >
                       <Heart className="w-3 h-3 text-white fill-white" />
                     </motion.div>
@@ -334,10 +334,10 @@ function NewsCard({
                     toggleFavorite(currentItem);
                   }}
                   className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                    favorites[currentItem.id] ? 'bg-pink-500 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
+                    favorites[currentItem.id] ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(220,38,38,0.6)]' : 'bg-white/10 text-white/60 hover:bg-white/20'
                   }`}
                 >
-                  <Heart className={`w-4 h-4 ${favorites[currentItem.id] ? 'fill-current' : ''}`} />
+                  <Heart className={`w-4 h-4 ${favorites[currentItem.id] ? 'fill-white' : ''}`} />
                 </button>
               </motion.div>
               
@@ -520,7 +520,7 @@ export default function App() {
   const fetchSingleFeed = async (feed: typeof FEEDS[0]) => {
     const proxies = [
       (url: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-      (url: string) => `https://api.codetabs.com/v1/proxy/?url=${encodeURIComponent(url)}`,
+      (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
       (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
       (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
     ];
@@ -692,8 +692,19 @@ export default function App() {
     // Return empty array if all proxies fail
     return [];
   };  const fetchAllFeeds = async () => {
-    setLoading(true);
-    setNewsItems([]); 
+    // Attempt to load instantly from cache
+    const cachedNews = localStorage.getItem('cachedNews');
+    if (cachedNews && newsItems.length === 0) {
+      try {
+        const parsedCache = JSON.parse(cachedNews);
+        if (parsedCache && parsedCache.length > 0) {
+          setNewsItems(parsedCache);
+          setLoading(false); // Instantly loaded!
+        }
+      } catch (e) { }
+    } else {
+      setLoading(true);
+    }
     
     // 1. Uniform Initial Loading: Load the FIRST feed from EACH category initially
     const categoriesToLoad = CATEGORIES.filter(c => c.id !== 'all');
@@ -756,6 +767,17 @@ export default function App() {
   useEffect(() => {
     fetchAllFeeds();
   }, []);
+
+  // Sync first 50 news items to localStorage for instant startup next time
+  useEffect(() => {
+    if (newsItems.length > 0) {
+      setTimeout(() => {
+        try {
+          localStorage.setItem('cachedNews', JSON.stringify(newsItems.slice(0, 50)));
+        } catch (e) { }
+      }, 1000);
+    }
+  }, [newsItems]);
 
   useEffect(() => {
     if (selectedCategory !== 'all' && !showFavoritesOnly) {
@@ -825,7 +847,7 @@ export default function App() {
   };
 
   const displayedNews = (showFavoritesOnly 
-    ? Object.values(favorites).sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)) 
+    ? Object.values(favorites).map((f: any) => ({ ...f, id: f.newsId })).sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)) 
     : newsItems)
     .filter(item => {
       // If showing favorites, we might want to see all of them regardless of category
