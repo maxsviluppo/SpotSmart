@@ -515,11 +515,10 @@ export default function App() {
   // Fetch Real News Feeds
   const fetchSingleFeed = async (feed: typeof FEEDS[0]) => {
     const proxies = [
-      (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-      (url: string) => `https://corsproxy.org/?${encodeURIComponent(url)}`,
       (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+      (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
       (url: string) => `https://api.codetabs.com/v1/proxy?url=${encodeURIComponent(url)}`,
-      (url: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+      (url: string) => `https://corsproxy.org/?${encodeURIComponent(url)}`,
       (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
     ];
 
@@ -527,7 +526,7 @@ export default function App() {
       try {
         const proxyUrl = getProxyUrl(feed.url);
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 seconds timeout for speed
+        const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout
 
         const response = await fetch(proxyUrl, { signal: controller.signal });
         clearTimeout(timeoutId);
@@ -697,50 +696,55 @@ export default function App() {
     const categoriesToLoad = CATEGORIES.filter(c => c.id !== 'all');
     const firstFeeds = categoriesToLoad.map(cat => FEEDS.find(f => f.cat === cat.label) || FEEDS[0]).filter((v, i, a) => a.findIndex(t => (t.url === v.url)) === i);
     
-    // Quick load of first 10 items to show content ASAP
-    const initialItems = await Promise.all(firstFeeds.map(feed => fetchSingleFeed(feed)));
-    setNewsItems(initialItems.flat().sort(() => Math.random() - 0.5));
-    setLoading(false); // Hide spinner immediately after first 10 feeds
+    // Quick load: Process feeds incrementally, don't wait for ALL of them. Show UI as soon as first resolves!
+    const processFeed = async (feed: typeof FEEDS[0]) => {
+      try {
+        const items = await fetchSingleFeed(feed);
+        if (items.length > 0) {
+          setNewsItems(prev => {
+            const existingIds = new Set(prev.map(item => item.id));
+            const newItems = items.filter(item => !existingIds.has(item.id));
+            if (newItems.length > 0) {
+              setLoading(false); // Hide spinner on FIRST successful fetch!
+              return [...prev, ...newItems].sort(() => Math.random() - 0.5);
+            }
+            return prev;
+          });
+        }
+      } catch (e) {
+        console.error("Feed error:", e);
+      }
+    };
 
-    // 2. Background loading: Process 10 feeds per category
+    // Fire unblocking fetching for the first feeds
+    firstFeeds.forEach(feed => processFeed(feed));
+
+    // Wait a brief moment to give priority to the very first feeds before hitting network with background
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // If nothing loaded yet, don't hang forever, close loader (empty state will show if it fails completely)
+    setTimeout(() => setLoading(false), 10000);
+
+    // 2. Background loading: Pre-calculate rest of the feeds
     let nextFeeds: typeof FEEDS = [];
     categoriesToLoad.forEach(cat => {
       const catFeeds = FEEDS.filter(f => f.cat === cat.label && !firstFeeds.some(ff => ff.url === f.url)).slice(0, 9);
       nextFeeds = [...nextFeeds, ...catFeeds];
     });
     
-    const initialBatchSize = 15;
-    for (let i = 0; i < nextFeeds.length; i += initialBatchSize) {
-      const batch = nextFeeds.slice(i, i + initialBatchSize);
-      const results = await Promise.all(batch.map(feed => fetchSingleFeed(feed)));
-      const items = results.flat();
-      
-      setNewsItems(prev => {
-        const existingIds = new Set(prev.map(item => item.id));
-        const newItems = items.filter(item => !existingIds.has(item.id));
-        return [...prev, ...newItems].sort(() => Math.random() - 0.5);
-      });
-    }
-
-    // 3. Complete remaining feeds in background
+    // Flatten background queue
     const loadedUrls = new Set([...firstFeeds, ...nextFeeds].map(f => f.url));
     const remainingFeeds = FEEDS.filter(f => !loadedUrls.has(f.url));
-    const batchSize = 10;
+    const backgroundQueue = [...nextFeeds, ...remainingFeeds];
     
-    for (let i = 0; i < remainingFeeds.length; i += batchSize) {
-      const batch = remainingFeeds.slice(i, i + batchSize);
-      await Promise.all(batch.map(async (feed) => {  
-        const items = await fetchSingleFeed(feed);
-        setNewsItems(prev => {
-          const existingIds = new Set(prev.map(item => item.id));
-          const newItems = items.filter(item => !existingIds.has(item.id));
-          return [...prev, ...newItems].sort(() => Math.random() - 0.5);
-        });
-      }));
+    // Process queue with controlled concurrency
+    const concurrency = 6;
+    for (let i = 0; i < backgroundQueue.length; i += concurrency) {
+      const batch = backgroundQueue.slice(i, i + concurrency);
+      await Promise.allSettled(batch.map(processFeed));
       
-      if (i + batchSize < remainingFeeds.length) {
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
+      // Sleep to breathe and not rate-limit
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
   };
 
