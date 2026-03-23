@@ -308,7 +308,7 @@ function NewsCard({
                 className="flex items-center gap-4 pt-2"
               >
                 <div className="flex items-center gap-2">
-                  <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border ${selectedCategoryData?.border || 'border-white/20'} ${selectedCategoryData?.color || 'bg-white/10'} text-white shadow-[0_0_15px_rgba(255,255,255,0.1)]`}>
+                  <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border ${selectedCategoryData?.border || 'border-white/20'} ${selectedCategoryData?.color || 'bg-white/10'} text-white shadow-[0_0_15px_rgba(255,255,255,0.1)] opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-auto`}>
                     {currentItem.category}
                   </span>
                   {favorites[currentItem.id] && (
@@ -321,7 +321,7 @@ function NewsCard({
                     </motion.div>
                   )}
                 </div>
-                <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
+                <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest opacity-0 hover:opacity-100 transition-opacity duration-300 pointer-events-auto ml-auto">
                   {currentItem.source} • {currentItem.time}
                 </span>
                 <button
@@ -434,7 +434,7 @@ export default function App() {
   const SelectedCategoryIcon = selectedCategoryData?.icon;
 
   useEffect(() => {
-    const timer = setTimeout(() => setShowSplash(false), 3500);
+    const timer = setTimeout(() => setShowSplash(false), 1500);
     const consent = localStorage.getItem('cookieConsent');
     if (!consent) {
       setTimeout(() => setShowCookieBanner(true), 4000);
@@ -722,7 +722,7 @@ export default function App() {
       }));
       
       if (i + batchSize < remainingFeeds.length) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
   };
@@ -730,6 +730,29 @@ export default function App() {
   useEffect(() => {
     fetchAllFeeds();
   }, []);
+
+  useEffect(() => {
+    if (selectedCategory !== 'all' && !showFavoritesOnly) {
+      const catNews = newsItems.filter(item => 
+        item.category.toLowerCase().includes(selectedCategory.toLowerCase()) ||
+        selectedCategory.toLowerCase().includes(item.category.toLowerCase())
+      );
+      if (catNews.length < 5) {
+        const feeds = FEEDS.filter(f => 
+          f.cat.toLowerCase().includes(selectedCategory.toLowerCase()) ||
+          selectedCategory.toLowerCase().includes(f.cat.toLowerCase())
+        );
+        feeds.forEach(async (feed) => {
+          const items = await fetchSingleFeed(feed);
+          setNewsItems(prev => {
+            const existingIds = new Set(prev.map(item => item.id));
+            const newItems = items.filter(item => !existingIds.has(item.id));
+            return [...prev, ...newItems].sort(() => Math.random() - 0.5);
+          });
+        });
+      }
+    }
+  }, [selectedCategory, showFavoritesOnly]);
 
   const toggleFavorite = async (news: NewsItem) => {
     if (!user) {
@@ -1100,6 +1123,9 @@ export default function App() {
                                       <motion.div layoutId={selectedCategory === cat.id ? "active-cat-icon" : undefined}>
                                         <cat.icon className="w-[18px] h-[18px]" />
                                       </motion.div>
+                                      <span className="absolute bottom-full mb-2 px-2 py-1 text-white text-[9px] font-bold uppercase tracking-wider opacity-0 group-hover/cat:opacity-100 transition-opacity pointer-events-none whitespace-nowrap bg-black/40 backdrop-blur-sm rounded-md border border-white/10">
+                                        {cat.label}
+                                      </span>
                                     </motion.button>
                                   );
                                 })}
@@ -1186,7 +1212,7 @@ export default function App() {
                 {selectedCategory !== 'all' && !isMenuOpen && (
                   <motion.button
                     initial={{ opacity: 0, y: 20, scale: 0.5 }}
-                    animate={{ opacity: 1, y: -125, scale: 1 }}
+                    animate={{ opacity: 1, y: -65, scale: 1 }}
                     exit={{ opacity: 0, y: 20, scale: 0.5 }}
                     transition={{ type: "spring", stiffness: 400, damping: 25 }}
                     whileHover={{ scale: 1.1 }}
@@ -1195,45 +1221,19 @@ export default function App() {
                       setSelectedCategory('all');
                       setCurrentIndex(0);
                     }}
-                    className={`absolute bottom-0 right-1 w-12 h-12 rounded-full text-white flex items-center justify-center shadow-lg border z-[90] ${selectedCategoryData?.color || 'bg-indigo-600'} ${selectedCategoryData?.border || 'border-indigo-400/30'}`}
+                    className={`absolute bottom-0 right-1 w-12 h-12 rounded-full text-white flex items-center justify-center shadow-lg border z-[90] group/sel-cat ${selectedCategoryData?.color || 'bg-indigo-600'} ${selectedCategoryData?.border || 'border-indigo-400/30'}`}
                   >
                     <motion.div layoutId="active-cat-icon">
                       {SelectedCategoryIcon && <SelectedCategoryIcon className="w-5 h-5" />}
                     </motion.div>
+                    <span className="absolute right-full mr-4 px-3 py-1 text-white text-[10px] font-bold uppercase tracking-wider opacity-0 group-hover/sel-cat:opacity-100 transition-opacity pointer-events-none whitespace-nowrap drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                      {selectedCategoryData?.label}
+                    </span>
                   </motion.button>
                 )}
               </AnimatePresence>
 
-              <AnimatePresence>
-                {!isMenuOpen && (
-                  <motion.button
-                    initial={{ opacity: 0, y: 20, scale: 0.5 }}
-                    animate={{ opacity: 1, y: -65, scale: 1 }}
-                    exit={{ opacity: 0, y: 20, scale: 0.5 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => {
-                      if (!user) {
-                        loginWithGoogle();
-                        return;
-                      }
-                      if (currentItem) {
-                        toggleFavorite(currentItem as NewsItem);
-                      }
-                    }}
-                    className={`absolute bottom-0 right-1 w-12 h-12 rounded-full flex items-center justify-center shadow-lg border z-[90] transition-all ${
-                      currentItem && favorites[currentItem.id]
-                        ? 'bg-pink-600 border-pink-400/30 text-white' 
-                        : 'bg-white/10 border-white/10 text-white/60 hover:text-white hover:bg-white/20'
-                    } ${!user ? 'opacity-40 grayscale-[0.5]' : 'opacity-100'}`}
-                  >
-                    <motion.div layoutId="active-fav-icon">
-                      <Heart className={`w-5 h-5 ${currentItem && favorites[currentItem.id] ? 'fill-white' : ''}`} />
-                    </motion.div>
-                  </motion.button>
-                )}
-              </AnimatePresence>
+
 
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -1265,13 +1265,43 @@ export default function App() {
                     )}
                   </motion.div>
                 </AnimatePresence>
+              <AnimatePresence>
+                {!isMenuOpen && (
+                  <motion.button
+                    initial={{ opacity: 0, y: 20, scale: 0.5 }}
+                    animate={{ opacity: 1, y: -125, scale: 1 }}
+                    exit={{ opacity: 0, y: 20, scale: 0.5 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => {
+                      if (!user) {
+                        loginWithGoogle();
+                        return;
+                      }
+                      if (currentItem) {
+                        toggleFavorite(currentItem as NewsItem);
+                      }
+                    }}
+                    className={`absolute bottom-0 right-1 w-12 h-12 rounded-full flex items-center justify-center shadow-lg border z-[90] transition-all ${
+                      currentItem && favorites[currentItem.id]
+                        ? 'bg-pink-600 border-pink-400/30 text-white' 
+                        : 'bg-white/10 border-white/10 text-white/60 hover:text-white hover:bg-white/20'
+                    } ${!user ? 'opacity-40 grayscale-[0.5]' : 'opacity-100'}`}
+                  >
+                    <motion.div layoutId="active-fav-icon">
+                      <Heart className={`w-5 h-5 ${currentItem && favorites[currentItem.id] ? 'fill-white' : ''}`} />
+                    </motion.div>
+                  </motion.button>
+                )}
+              </AnimatePresence>
               </motion.button>
             </div>
           </div>
 
           <div className="relative w-full h-full overflow-hidden flex flex-col bg-black">
             <div className="flex-1 relative overflow-hidden">
-              {loading && newsItems.length === 0 ? (
+              {(loading || (displayedNews.length === 0 && !showFavoritesOnly)) ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black z-50">
                   <motion.img
                     src="/logocompletook.png"
@@ -1303,28 +1333,6 @@ export default function App() {
                         isFlipped={isFlipped}
                         setIsFlipped={setIsFlipped}
                       />
-                ) : !showFavoritesOnly ? (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black p-8 text-center">
-                    <motion.div
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      className="max-w-md space-y-6"
-                    >
-                      <div className="w-20 h-20 bg-white/5 border border-white/10 rounded-3xl flex items-center justify-center mx-auto mb-8">
-                        <Search className="w-10 h-10 text-white/20" />
-                      </div>
-                      <h3 className="text-3xl font-black text-white uppercase tracking-tighter">Nessuna Notizia</h3>
-                      <p className="text-white/40 text-lg font-medium leading-relaxed">
-                        Non abbiamo trovato articoli per questa categoria o ricerca. Prova a cambiare filtri o aggiorna i feed.
-                      </p>
-                      <button 
-                        onClick={fetchAllFeeds}
-                        className="px-10 py-5 bg-indigo-600 text-white font-black uppercase tracking-tighter text-sm hover:bg-indigo-500 transition-all shadow-[0_0_30px_rgba(79,70,229,0.3)]"
-                      >
-                        Aggiorna Feed
-                      </button>
-                    </motion.div>
-                  </div>
                 ) : (
                   <motion.div 
                     initial={{ opacity: 0, scale: 0.9 }}
@@ -1333,11 +1341,9 @@ export default function App() {
                     className="absolute inset-0 flex flex-col items-center justify-center text-white/40 gap-6 p-8 text-center"
                   >
                     <div className="w-24 h-24 rounded-full bg-white/5 flex items-center justify-center border border-white/10 mb-2">
-                      <Heart className="w-10 h-10 opacity-20" />
                     </div>
                     <div className="space-y-2">
                       <h3 className="text-2xl font-black text-white uppercase tracking-tighter">Nessun preferito</h3>
-                      <p className="text-sm text-white/40 max-w-xs mx-auto">Salva le notizie che ti interessano cliccando sull'icona del cuore.</p>
                     </div>
                     <button 
                       onClick={() => setShowFavoritesOnly(false)}
