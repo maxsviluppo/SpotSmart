@@ -179,8 +179,8 @@ function NewsCard({
     const requiresProxy = blockedSites.some(site => secureUrl.toLowerCase().includes(site));
     
     if (requiresProxy) {
-       // Use corsproxy.io which is more reliable for rendering HTML in iframes than codetabs
-       return `https://corsproxy.io/?${encodeURIComponent(secureUrl)}`;
+       // Use local /api/proxy (copied from GamesPulse for robust rendering)
+       return `/api/proxy?url=${encodeURIComponent(secureUrl)}`;
     }
     return secureUrl;
   };
@@ -404,6 +404,8 @@ function NewsCard({
                   src={getIframeUrl(currentItem.url)} 
                   className="relative z-10 w-full h-full border-none"
                   title={currentItem.title}
+                  loading="lazy"
+                  style={{ overflow: 'auto' }}
                   onError={() => {
                     // This rarely triggers for cross-origin iframes but good to have
                   }}
@@ -521,181 +523,17 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
-  // Fetch Real News Feeds
+  // Fetch Real News Feeds using the new backend proxy for optimal image/video extraction
   const fetchSingleFeed = async (feed: typeof FEEDS[0]) => {
-    const proxies = [
-      (url: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-      (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-      (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
-      (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    ];
-
-    for (const getProxyUrl of proxies) {
-      try {
-        const proxyUrl = getProxyUrl(feed.url);
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
-
-        const response = await fetch(proxyUrl, { signal: controller.signal });
-        clearTimeout(timeoutId);
-
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        
-        let xmlText = "";
-        if (proxyUrl.includes('allorigins.win/get')) {
-          const data = await response.json();
-          xmlText = data.contents;
-        } else {
-          xmlText = await response.text();
-        }
-
-        if (!xmlText) throw new Error("Empty response");
-        
-        const lowerText = xmlText.toLowerCase();
-        if (lowerText.includes("access denied") || lowerText.includes("forbidden") || lowerText.includes("blocked by cloudflare")) {
-          throw new Error("Request blocked by source or proxy");
-        }
-
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xmlText, "text/xml");
-        if (!xmlDoc.documentElement) throw new Error("Invalid XML document");
-        
-        const parseError = xmlDoc.getElementsByTagName("parsererror");
-        if (parseError.length > 0) throw new Error("XML parsing error");
-
-        const items = Array.from(xmlDoc.querySelectorAll("item, entry")).slice(0, 10);
-
-        const parsedItems: NewsItem[] = items.map((item, idx) => {
-          const title = item.querySelector("title")?.textContent || "Senza Titolo";
-          let link = item.querySelector("link")?.textContent || "#";
-          if (link === "#" || link.trim() === "") {
-            link = item.querySelector("link")?.getAttribute("href") || "#";
-          }
-
-          const desc = item.querySelector("description")?.textContent || 
-                       item.querySelector("summary")?.textContent || 
-                       item.querySelector("content")?.textContent || "";
-
-          const parseImageAndVideo = () => {
-            let img = `https://picsum.photos/seed/${feed.cat.toLowerCase()}-${idx}/1600/900`;
-            let vid: string | undefined = undefined;
-
-            const getTag = (tagName: string) => {
-              const tags = item.getElementsByTagNameNS("*", tagName);
-              if (tags.length > 0) return tags[0];
-              const localTags = item.getElementsByTagName(tagName);
-              if (localTags.length > 0) return localTags[0];
-              const prefixedTags = item.getElementsByTagName(`media:${tagName}`);
-              if (prefixedTags.length > 0) return prefixedTags[0];
-              return null;
-            };
-
-            // Search for video in tags (media:content or enclosure)
-            const mContents = Array.from(item.getElementsByTagNameNS("*", "content")).concat(
-              Array.from(item.getElementsByTagName("media:content")),
-              Array.from(item.getElementsByTagName("content"))
-            );
-
-            for (const content of mContents) {
-              const type = content.getAttribute("type") || "";
-              const url = content.getAttribute("url");
-              if (url && type.startsWith("video/")) {
-                vid = url;
-              } else if (url && type.startsWith("image/") && !img.includes('http')) {
-                img = url;
-              } else if (url && !img.includes('http')) {
-                img = url;
-              }
-            }
-
-            const mContent = getTag("content");
-            if (mContent?.getAttribute("url")) {
-              const url = mContent.getAttribute("url")!;
-              if (mContent.getAttribute("type")?.startsWith("video/")) vid = url;
-              else img = url;
-            }
-            
-            const enclosure = item.querySelector("enclosure");
-            if (enclosure?.getAttribute("url")) {
-              const url = enclosure.getAttribute("url")!;
-              const type = enclosure.getAttribute("type") || "";
-              if (type.startsWith("video/")) vid = url;
-              else if (type.startsWith("image/")) img = url;
-              else if (!img.includes('http')) img = url;
-            }
-
-            if (!img.includes('http')) {
-              const mThumb = getTag("thumbnail");
-              if (mThumb?.getAttribute("url")) img = mThumb.getAttribute("url")!;
-              
-              const mGroup = getTag("group");
-              if (mGroup) {
-                const gContent = mGroup.getElementsByTagNameNS("*", "content")[0] || mGroup.getElementsByTagName("content")[0];
-                if (gContent?.getAttribute("url")) img = gContent.getAttribute("url")!;
-              }
-
-              const contentEncoded = item.getElementsByTagName("content:encoded")[0]?.textContent || "";
-              const fullContent = item.querySelector("content")?.textContent || "";
-              const combinedContent = desc + contentEncoded + fullContent;
-              const imgRegex = /<img[^>]+src=["']([^"']+)["']/;
-              const foundImg = combinedContent.match(imgRegex);
-              if (foundImg && foundImg[1] && !foundImg[1].includes('feedburner')) {
-                let url = foundImg[1];
-                if (url.startsWith('//')) url = 'https:' + url;
-                img = url;
-              }
-            }
-
-            return { img, vid };
-          };
-
-          const { img, vid } = parseImageAndVideo();
-
-          // Enhanced category detection
-          let finalCat = feed.cat;
-          const rssCat = item.querySelector("category")?.textContent?.toLowerCase();
-          if (rssCat) {
-            const catMap: Record<string, string> = {
-              'sport': 'Sport', 'calcio': 'Sport', 'finanza': 'Finanza', 'economia': 'Finanza',
-              'borsa': 'Finanza', 'tecnologia': 'Tecnologia', 'tech': 'Tecnologia',
-              'scienza': 'Scienza', 'cultura': 'Cultura', 'politica': 'Mondo',
-              'esteri': 'Mondo', 'cronaca': 'Cronaca'
-            };
-            for (const [key, val] of Object.entries(catMap)) {
-              if (rssCat.includes(key)) {
-                finalCat = val;
-                break;
-              }
-            }
-          }
-
-          const pubDate = item.querySelector("pubDate")?.textContent || 
-                          item.querySelector("published")?.textContent || 
-                          item.querySelector("updated")?.textContent;
-          
-          const time = pubDate ? new Date(pubDate).toLocaleDateString('it-IT', { hour: '2-digit', minute: '2-digit' }) : "Recentemente";
-
-          return {
-            id: `${feed.name}-${idx}-${Date.now()}`,
-            title: title,
-            url: link,
-            summary: desc.replace(/<[^>]*>?/gm, '').substring(0, 800) + "...",
-            category: finalCat,
-            source: feed.name,
-            imageUrl: img,
-            videoUrl: vid,
-            time: time
-          };
-        });
-        
-        return parsedItems;
-      } catch (e) {
-        // Continue to next proxy
-      }
+    try {
+      const response = await fetch(`/api/news?url=${encodeURIComponent(feed.url)}&category=${encodeURIComponent(feed.cat)}&source=${encodeURIComponent(feed.name)}`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const items = await response.json();
+      return items as NewsItem[];
+    } catch (e) {
+      console.error(`Error fetching feed ${feed.name}:`, e);
+      return [];
     }
-
-    // Return empty array if all proxies fail
-    return [];
   };  const fetchAllFeeds = async () => {
     // Attempt to load instantly from cache
     const cachedNews = localStorage.getItem('cachedNews');
