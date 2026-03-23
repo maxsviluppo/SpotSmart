@@ -74,9 +74,21 @@ const DEFAULT_SEO = {
   }
 };
 
+const ADSENSE_FILE = path.join(process.cwd(), "adsense_config.json");
+
+// Default AdSense data
+const DEFAULT_ADSENSE = {
+  enabled: false,
+  client: "", // e.g. ca-pub-XXXXXXXXXXXXXXXX
+  script: "", // Full script snippet
+  adsTxt: "", // Content for ads.txt
+  metaTag: "" // Meta tag verification
+};
+
 // Initialize files if missing
 if (!fs.existsSync(SEO_FILE)) fs.writeFileSync(SEO_FILE, JSON.stringify(DEFAULT_SEO, null, 2));
 if (!fs.existsSync(ANALYTICS_FILE)) fs.writeFileSync(ANALYTICS_FILE, JSON.stringify({ trackingId: "", enabled: true, verificationTag: "" }, null, 2));
+if (!fs.existsSync(ADSENSE_FILE)) fs.writeFileSync(ADSENSE_FILE, JSON.stringify(DEFAULT_ADSENSE, null, 2));
 
 function getSeoConfigs() {
   try { return JSON.parse(fs.readFileSync(SEO_FILE, "utf-8")); } catch (err) { return DEFAULT_SEO; }
@@ -87,6 +99,11 @@ function getAnalytics() {
   try { return JSON.parse(fs.readFileSync(ANALYTICS_FILE, "utf-8")); } catch (err) { return { trackingId: "" }; }
 }
 function saveAnalytics(data: any) { fs.writeFileSync(ANALYTICS_FILE, JSON.stringify(data, null, 2)); }
+
+function getAdSense() {
+  try { return JSON.parse(fs.readFileSync(ADSENSE_FILE, "utf-8")); } catch (err) { return DEFAULT_ADSENSE; }
+}
+function saveAdSense(data: any) { fs.writeFileSync(ADSENSE_FILE, JSON.stringify(data, null, 2)); }
 
 function getSources() {
   try { return JSON.parse(fs.readFileSync(SOURCES_FILE, "utf-8")); } catch (err) { return []; }
@@ -109,9 +126,8 @@ const parser = new Parser({
 });
 
 // Helper for SEO Injection
-function injectMetadata(html: string, config: any, analytics: any, reqUrl: string) {
+function injectMetadata(html: string, config: any, analytics: any, adsense: any, reqUrl: string) {
   const gaScript = (analytics.enabled && analytics.trackingId) ? `
-    <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=${analytics.trackingId}"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
@@ -120,6 +136,8 @@ function injectMetadata(html: string, config: any, analytics: any, reqUrl: strin
       gtag('config', '${analytics.trackingId}');
     </script>
   ` : '';
+
+  const adsenseScript = (adsense.enabled && adsense.script) ? adsense.script : '';
 
   let injected = html;
   
@@ -136,19 +154,23 @@ function injectMetadata(html: string, config: any, analytics: any, reqUrl: strin
     <meta property="og:url" content="https://spotsmart.it${reqUrl}" />
     <link rel="canonical" href="https://spotsmart.it${reqUrl}" />
     ${analytics.verificationTag || ''}
-    ${config.adsense || ''}
+    ${adsense.metaTag || ''}
+    ${adsenseScript}
     ${gaScript}
   `;
-
-  // 3. Clean up potential duplicates if some tags were partially present
-  injected = injected.replace(/<meta name="description"(.*?)>/i, '');
-  injected = injected.replace(/<meta name="keywords"(.*?)>/i, '');
 
   return injected.replace(/<\/head>/i, `${seoTags}</head>`);
 }
 
 app.use(cors());
 app.use(express.json());
+
+// Ads.txt for AdSense
+app.get("/ads.txt", (req, res) => {
+  const adsense = getAdSense();
+  res.header("Content-Type", "text/plain");
+  res.send(adsense.adsTxt || "google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0");
+});
 
 // Proxy for Article Loading (Taken from GamesPulse)
 app.get("/api/proxy", async (req, res) => {
@@ -404,6 +426,14 @@ app.post("/api/admin/analytics", express.json(), (req, res) => {
   res.send("Saved");
 });
 
+app.get("/api/admin/adsense", (req, res) => res.json(getAdSense()));
+app.post("/api/admin/adsense", express.json(), (req, res) => {
+  const { auth, data } = req.body;
+  if (auth?.username !== 'admin' || auth?.password !== 'accessometti') return res.status(401).send("Unauthorized");
+  saveAdSense(data);
+  res.send("Saved");
+});
+
 async function startServer() {
   const PORT = 3000;
   
@@ -424,8 +454,9 @@ async function startServer() {
         const configs = getSeoConfigs();
         const config = configs[urlPath] || configs.all;
         const analytics = getAnalytics();
+        const adsense = getAdSense();
         
-        const html = injectMetadata(template, config, analytics, url);
+        const html = injectMetadata(template, config, analytics, adsense, url);
         res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
       } catch (e) {
         vite.ssrFixStacktrace(e as Error);
@@ -440,9 +471,10 @@ async function startServer() {
       const configs = getSeoConfigs();
       const config = configs[urlPath] || configs.all;
       const analytics = getAnalytics();
+      const adsense = getAdSense();
       
       const template = fs.readFileSync(path.join(distPath, "index.html"), "utf-8");
-      const html = injectMetadata(template, config, analytics, req.originalUrl);
+      const html = injectMetadata(template, config, analytics, adsense, req.originalUrl);
       
       res.send(html);
     });
