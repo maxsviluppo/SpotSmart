@@ -145,28 +145,10 @@ function NewsCard({
   const flipped = isFlipped !== undefined ? isFlipped : isFlippedLocal;
   const setFlipped = setIsFlipped !== undefined ? setIsFlipped : setIsFlippedLocal;
 
-  const ensureHttps = (url: string) => {
-    if (!url) return url;
-    if (url.startsWith('http://')) return url.replace('http://', 'https://');
-    return url;
-  };
-
   const getIframeUrl = (url: string) => {
-    const secureUrl = ensureHttps(url);
-    // Explicitly proxy sites known to have strict X-Frame-Options or those that commonly block iframes
-    const blockedSites = [
-      'tgcom24', 'mediaset', 'ansa.it', 'cnbc', 'bbc', 'repubblica', 'gazzetta', 
-      'reuters', 'ilsole24ore', 'corriere', 'lastampa', 'wired', 'hdblog', 
-      'dday', 'tomshw', 'punto-informatico', 'leganerd', 'macitynet', 
-      'theverge', 'techcrunch', 'technologyreview', 'ft.com', 'bloomberg'
-    ];
-    const requiresProxy = blockedSites.some(site => secureUrl.toLowerCase().includes(site));
-    
-    if (requiresProxy) {
-       // Use local /api/proxy (copied from GamesPulse for robust rendering)
-       return `/api/proxy?url=${encodeURIComponent(secureUrl)}`;
-    }
-    return secureUrl;
+    const secureUrl = url.startsWith('http://') ? url.replace('http://', 'https://') : url;
+    // Use local /api/proxy (synchronized from GamesPulse for robust rendering)
+    return `/api/proxy?url=${encodeURIComponent(secureUrl)}`;
   };
 
   return (
@@ -521,6 +503,38 @@ export default function App() {
   const [adminTab, setAdminTab] = useState<'seo' | 'sources' | 'analytics' | 'adsense'>('seo');
   const [newsSources, setNewsSources] = useState<any[]>([]);
   const [newSource, setNewSource] = useState({ name: '', url: '', cat: 'Cronaca' });
+  const [deleteConfirm, setDeleteConfirm] = useState<{show: boolean, id: string, name: string} | null>(null);
+
+  const confirmDelete = (id: string, name: string) => {
+    setDeleteConfirm({ show: true, id, name });
+  };
+
+  const saveSources = async (sources: any[]) => {
+    try {
+      await fetch('/api/admin/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth: { username: 'admin', password: 'accessometti' }, sources })
+      });
+    } catch (e) {
+      console.warn('[saveSources] failed:', e);
+    }
+  };
+
+  const handleToggleSource = (id: string) => {
+    const updated = newsSources.map(s =>
+      s.id === id ? { ...s, active: s.active === false ? true : false } : s
+    );
+    setNewsSources(updated);
+    // Persist only the changed record to Firestore as well
+    const changed = updated.find(s => s.id === id);
+    if (changed) {
+      import('firebase/firestore').then(({ doc: firestoreDoc, updateDoc }) => {
+        updateDoc(firestoreDoc(db, 'news_sources', id), { active: changed.active }).catch(() => {});
+      });
+    }
+    saveSources(updated);
+  };
   const splashBg = useMemo(() => `https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&q=80&w=1920&h=1080`, []);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -963,13 +977,19 @@ export default function App() {
     try {
       const activeSources = newsSources.length > 0 ? newsSources : FEEDS;
       
-      // 1. Uniform Initial Loading: Load the FIRST feed from EACH category initially
-      const categoriesToLoad = CATEGORIES.filter(c => c.id !== 'all');
-      const firstFeeds = categoriesToLoad.map(cat => 
-        activeSources.find((f: any) => f.cat === cat.label) || activeSources[0]
-      ).filter((v, i, a) => v && a.findIndex(t => t && t.url === v.url) === i);
+        // 1. Uniform Initial Loading: Load the FIRST feed from EACH category initially
+        // to ensure the initial "all" view is assorted and random
+        const categoriesToLoad = CATEGORIES.filter(c => c.id !== 'all');
+        const firstFeeds = categoriesToLoad.map(cat => 
+          activeSources.filter((f: any) => f.cat === cat.label).sort(() => Math.random() - 0.5)[0]
+        ).filter(Boolean);
         
+        // Add some strictly random ones too
+        const randomBatch = activeSources.sort(() => Math.random() - 0.5).slice(0, 5);
+        const combinedInitial = [...new Set([...firstFeeds, ...randomBatch])];
+          
         const processFeed = async (source: any) => {
+          if (source.active === false) return; // Skip inactive sources
           try {
             const items = await fetchSingleFeed(source);
             if (items.length > 0) {
@@ -977,11 +997,12 @@ export default function App() {
                 const existingIds = new Set(prev.map(item => item.id));
                 const newItems = items.filter(item => !existingIds.has(item.id));
                 if (newItems.length > 0) {
-                   // Noisy Descend: Sort by date (desc) but add ±30 mins variance for "random" feel every visit
+                   // Time-shifted Shuffle: Sort by date but inject noise
+                   // This keeps news roughly chronological but mixes them up beautifully
                    const combined = [...prev, ...newItems];
                    return combined.sort((a, b) => {
-                     const aMod = a.timestamp + (Math.random() - 0.5) * 1.8e6; // 30 min variance
-                     const bMod = b.timestamp + (Math.random() - 0.5) * 1.8e6;
+                     const aMod = a.timestamp + (Math.random() - 0.5) * 3.6e6; // 1 hour variance
+                     const bMod = b.timestamp + (Math.random() - 0.5) * 3.6e6;
                      return bMod - aMod;
                    });
                 }
@@ -993,14 +1014,15 @@ export default function App() {
           }
         };
 
-        // Load initial batch
-        await Promise.all(firstFeeds.map(processFeed));
-        setLoading(false); // Definitely hide loader after initial batch
+        // Load initial assorted batch
+        await Promise.all(combinedInitial.map(processFeed));
+        setLoading(false); 
 
-        // Load the rest in background
-        const remainingFeeds = newsSources.filter(s => !firstFeeds.some(f => f.url === s.url));
-        remainingFeeds.forEach(source => {
-          setTimeout(() => processFeed(source), Math.random() * 30000);
+        // Load the rest in background with staggered delays
+        const loadedUrls = new Set(combinedInitial.map(f => f.url));
+        const remainingFeeds = activeSources.filter(s => !loadedUrls.has(s.url) && s.active !== false); // Filter active
+        remainingFeeds.forEach((source, idx) => {
+          setTimeout(() => processFeed(source), 2000 + (idx * 1500));
         });
       } catch (e) {
         console.error("Fetch all feeds failed:", e);
@@ -1044,8 +1066,8 @@ export default function App() {
             const newItems = items.filter(item => !existingIds.has(item.id));
             const combined = [...prev, ...newItems];
             return combined.sort((a, b) => {
-               const aMod = a.timestamp + (Math.random() - 0.5) * 1.8e6;
-               const bMod = b.timestamp + (Math.random() - 0.5) * 1.8e6;
+               const aMod = a.timestamp + (Math.random() - 0.5) * 7.2e6; // 2 hour variance for category deep dives
+               const bMod = b.timestamp + (Math.random() - 0.5) * 7.2e6;
                return bMod - aMod;
             });
           });
@@ -1098,15 +1120,15 @@ export default function App() {
     }
   };
 
-  const displayedNews = (showFavoritesOnly 
-    ? Object.values(favorites).map((f: any) => ({ ...f, id: f.newsId })).sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)) 
-    : newsItems)
-    .filter(item => {
-      // If showing favorites, we might want to see all of them regardless of category
-      // but let's keep the category filter if the user explicitly selected one.
-      // However, the user request suggests they expect to see their favorites when they click the heart.
+  const displayedNews = useMemo(() => {
+    let base = showFavoritesOnly 
+      ? Object.values(favorites).map((f: any) => ({ ...f, id: f.newsId })).sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)) 
+      : newsItems;
+
+    return base.filter(item => {
+      // If showing favorites from the HEART menu, we ignore category unless specifically searching
       const category = item.category || 'Generale';
-      const matchesCategory = selectedCategory === 'all' || 
+      const matchesCategory = showFavoritesOnly || selectedCategory === 'all' || 
         category.toLowerCase().includes(selectedCategory.toLowerCase()) || 
         selectedCategory.toLowerCase().includes(category.toLowerCase());
       
@@ -1116,6 +1138,7 @@ export default function App() {
 
       return matchesCategory && matchesSearch;
     });
+  }, [showFavoritesOnly, favorites, newsItems, selectedCategory, searchQuery]);
   // Build virtual feed: insert ad slots every 5-8 news items
   const feedWithAds = useMemo(() => {
     // If monetization is disabled, just return news
@@ -2160,16 +2183,22 @@ export default function App() {
                               </div>
                               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                                 {catSources.map(source => (
-                                  <div key={source.id} className="bg-slate-900/30 border border-white/5 rounded-2xl p-5 hover:bg-slate-900 transition-all group">
-                                    <div className="flex items-start justify-between">
-                                      <div className="flex-1 min-w-0 pr-4">
-                                        <p className="text-white font-bold text-sm truncate uppercase tracking-tight">{source.name}</p>
+                                  <div key={source.id} className="bg-slate-900/30 border border-white/5 rounded-2xl p-5 hover:bg-slate-900 transition-all group flex items-center justify-between">
+                                    <div className="flex items-center gap-4 flex-1 min-w-0 pr-4">
+                                      <button 
+                                        onClick={() => handleToggleSource(source.id)}
+                                        className={`relative w-10 h-6 rounded-full transition-all shrink-0 ${source.active !== false ? 'bg-indigo-500' : 'bg-white/10'}`}
+                                      >
+                                        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${source.active !== false ? 'right-1' : 'left-1'}`} />
+                                      </button>
+                                      <div className="truncate">
+                                        <p className={`font-bold text-sm truncate uppercase tracking-tight transition-opacity ${source.active !== false ? 'text-white' : 'text-white/20'}`}>{source.name}</p>
                                         <p className="text-[10px] text-white/20 mt-1 truncate font-mono">{source.url}</p>
                                       </div>
-                                      <button onClick={() => deleteSource(source.id)} className="w-8 h-8 rounded-lg bg-red-500/10 text-red-500 opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500/20 flex items-center justify-center">
-                                        <Trash2 className="w-4 h-4" />
-                                      </button>
                                     </div>
+                                    <button onClick={() => confirmDelete(source.id, source.name)} className="w-8 h-8 rounded-lg bg-red-500/10 text-red-500 opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500/20 flex items-center justify-center shrink-0">
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
                                   </div>
                                 ))}
                               </div>
@@ -2522,6 +2551,44 @@ export default function App() {
              </AnimatePresence>
 
            </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {deleteConfirm?.show && (
+          <div className="fixed inset-0 z-[3000] flex items-center justify-center p-6 bg-black/95 backdrop-blur-2xl">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="w-full max-w-md bg-slate-950 border border-white/10 rounded-[40px] p-12 text-center shadow-[0_0_100px_rgba(0,0,0,1)]"
+            >
+              <div className="w-24 h-24 rounded-[30px] bg-red-500/10 text-red-500 border border-red-500/20 flex items-center justify-center mx-auto mb-10">
+                <Trash2 size={40} />
+              </div>
+              <h3 className="text-3xl font-black text-white uppercase tracking-tighter mb-5">Elimina Fonte?</h3>
+              <p className="text-sm text-white/40 mb-12 font-medium leading-relaxed px-6">
+                Sei sicuro di voler eliminare <span className="text-white font-bold">{deleteConfirm.name}</span>?<br/>Questa azione rimuoverà definitivamente la fonte e le sue notizie.
+              </p>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setDeleteConfirm(null)}
+                  className="flex-1 py-5 bg-white/5 text-white/60 font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-white/10 transition-all"
+                >
+                  Annulla
+                </button>
+                <button 
+                  onClick={() => {
+                    deleteSource(deleteConfirm.id);
+                    setDeleteConfirm(null);
+                  }}
+                  className="flex-1 py-5 bg-red-600 text-white font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-red-700 shadow-xl shadow-red-600/30 transition-all"
+                >
+                  Conferma Elimina
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

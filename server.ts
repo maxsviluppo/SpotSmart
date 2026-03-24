@@ -351,11 +351,10 @@ app.get("/api/proxy", async (req, res) => {
     const needsStripping = troublesomeSites.some(site => url.toLowerCase().includes(site));
 
     if (needsStripping) {
-      // 1. Remove scripts and preload links to prevent rehydration crashes or iframe checks
+      // 1. Remove dangerous scripts only, keeping CSS for formatting
       html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
       html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
       html = html.replace(/<link rel="preload" as="script" [^>]*>/gi, '');
-      html = html.replace(/<next-route-announcer>[\s\S]*?<\/next-route-announcer>/gi, '');
       
       // 2. Remove common frame-breaking JS patterns or forced redirects
       html = html.replace(/if\s*\(top\s*!==\s*self\)\s*\{[\s\S]*?\}/gi, '');
@@ -363,9 +362,6 @@ app.get("/api/proxy", async (req, res) => {
       html = html.replace(/if\s*\(parent\s*!==\s*self\)\s*\{[\s\S]*?\}/gi, '');
       html = html.replace(/top\.location\.href\s*=\s*(self|window)\.location\.href/gi, '');
       html = html.replace(/window\.top\s*=\s*window/gi, '');
-      
-      // 3. Remove Refresh tags that might escape frames
-      html = html.replace(/<meta\s+http-equiv=["']refresh["'][^>]*>/gi, '');
     }
 
     // Add Base Tag for relative assets and ensure it works with the UI
@@ -378,6 +374,12 @@ app.get("/api/proxy", async (req, res) => {
           window.parent = window.self;
           Object.defineProperty(window, 'top', { get: function() { return window.self; } });
           Object.defineProperty(window, 'parent', { get: function() { return window.self; } });
+          // Force layout sync for formatted text
+          document.addEventListener('DOMContentLoaded', () => {
+             // Let the site maintain its original look but fix overflow
+             document.documentElement.style.overflowX = 'hidden';
+             document.body.style.overflowX = 'hidden';
+          });
         </script>
       `;
       html = html.replace("<head>", `<head>${baseTag}${frameScript}`);
