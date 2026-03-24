@@ -1,33 +1,20 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
     // ===============================================================
     // Assumed Data Model
     // ===============================================================
     //
     // Collection: users
-    // Document ID: userId (uid)
+    // Document ID: {userId} (matches Firebase Auth UID)
     // Fields:
-    //   - uid: string (required)
-    //   - email: string (required)
-    //   - displayName: string (optional)
-    //   - photoURL: string (optional)
-    //   - role: string (required, 'user' or 'admin')
-    //
-    // Collection: favorites
-    // Document ID: favoriteId (userId_newsId)
-    // Fields:
-    //   - userId: string (required)
-    //   - newsId: string (required)
-    //   - title: string (required)
-    //   - summary: string (required)
-    //   - category: string (required)
-    //   - imageUrl: string (required)
-    //   - url: string (required)
-    //   - source: string (required)
-    //   - createdAt: timestamp (required)
-    //   - expiresAt: timestamp (required)
+    //   - uid: string (required, immutable) - The user's unique ID
+    //   - displayName: string (optional) - User's name
+    //   - email: string (required) - User's email
+    //   - photoURL: string (optional) - User's avatar URL
+    //   - favorites: list (required) - Array of news item IDs
+    //   - createdAt: timestamp (optional) - Creation time
+    //   - updatedAt: timestamp (optional) - Last update time
     //
     // ===============================================================
 
@@ -42,81 +29,40 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    // Domain Validator for User Profile
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'favorites']) &&
+             data.uid == request.auth.uid &&
+             isValidEmail(data.email) &&
+             data.favorites is list &&
+             data.favorites.size() <= 500 && // Limit favorites to prevent abuse
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('photoURL' in data) || isValidUrl(data.photoURL)) &&
+             (!('createdAt' in data) || data.createdAt is string) &&
+             (!('updatedAt' in data) || data.updatedAt is string);
+    }
+
     function isAdmin() {
       return isAuthenticated() &&
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
           (request.auth.token.email == "castromassimo@gmail.com" && request.auth.token.email_verified == true));
     }
 
-    function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'email', 'role']) &&
-             data.uid is string && data.uid == request.auth.uid &&
-             data.email is string && data.email.size() < 100 &&
-             data.role in ['user', 'admin'];
-    }
-
-    function isValidFavorite(data) {
-      return data.keys().hasAll(['userId', 'newsId', 'title', 'summary', 'category', 'imageUrl', 'url', 'source', 'createdAt', 'expiresAt']) &&
-             data.userId == request.auth.uid &&
-             data.newsId is string &&
-             data.title is string && data.title.size() < 200 &&
-             data.summary is string && data.summary.size() < 1000 &&
-             data.category is string && data.category.size() < 100 &&
-             data.imageUrl is string && data.imageUrl.size() < 500 &&
-             data.url is string && data.url.size() < 500 &&
-             data.source is string && data.source.size() < 100 &&
-             data.createdAt is timestamp &&
-             data.expiresAt is timestamp &&
-             data.expiresAt > data.createdAt;
-    }
-
-    // ===============================================================
-    // Rules
-    // ===============================================================
-
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'user';
-      allow update: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role;
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && (!('role' in request.resource.data) || isAdmin());
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                      request.resource.data.uid == resource.data.uid &&
+                      (!('role' in request.resource.data) || request.resource.data.role == resource.data.role || isAdmin());
+      allow delete: if isAdmin();
     }
-
-    match /favorites/{favoriteId} {
-      // Allow reading only own favorites
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      
-      // Allow creating only own favorites
-      allow create: if isAuthenticated() && isValidFavorite(request.resource.data);
-      
-      // Allow deleting only own favorites
-      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      
-      // No updates allowed for favorites (they are atomic)
-      allow update: if false;
-    }
-
-    // Config Collections (TEMPORARILY OPEN FOR REPAIR)
-    match /seo_configs/{configId} {
-      allow read, write: if true;
-    }
-
-    match /news_sources/{sourceId} {
-      allow read, write: if true;
-    }
-
-    match /settings/{settingId} {
-      allow read, write: if true;
-    }
-
-    // Admin Configs (AdSense, Analytics) - Fully public (admin auth handled at app level)
-    match /configs/{configId} {
-      allow read, write: if true;
-    }
-
-    // Traffic Stats - Public read for dashboard, write from server
-    match /traffic/{docId} {
-      allow read: if true;
-      allow write: if true; // Server-side writes (no auth token available in API funcs)
-    }
-
   }
 }

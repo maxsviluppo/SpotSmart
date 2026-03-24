@@ -3,196 +3,254 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Newspaper, TrendingUp, Clock, Share2, ExternalLink, Menu, X, Settings, User as UserIcon, Heart, LogOut, BookOpen, LayoutGrid, Globe, Cpu, Music, Gamepad2, Palette, FlaskConical, Search, RefreshCw, Info, Send, Trophy, MapPin, Plus, Stethoscope, Shield, Lock, Save, Trash2, CheckCircle2, Activity, Database, BarChart3, ChevronRight, Users, FileText, Check, AlertCircle } from 'lucide-react';
-import { auth, loginWithGoogle, logout, onAuthStateChanged, db, handleFirestoreError, OperationType } from './firebase';
-import type { User } from './firebase';
-import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, Timestamp, getDoc, addDoc, updateDoc } from 'firebase/firestore';
-import { FEEDS } from './feeds';
+import { 
+  Gamepad2, 
+  Newspaper, 
+  Trophy, 
+  Settings, 
+  Search, 
+  RefreshCw,
+  ExternalLink,
+  ChevronRight,
+  Monitor,
+  Smartphone,
+  Cpu,
+  LayoutGrid,
+  X,
+  User,
+  Heart,
+  Share2,
+  Send,
+  LogOut,
+  LogIn,
+  ShieldCheck,
+  Globe,
+  Info,
+  Shield,
+  Clock,
+  Activity,
+  Users,
+  TrendingUp,
+  BarChart3,
+  Check,
+  AlertCircle,
+  Database,
+  Plus,
+  Trash2,
+  Save,
+  FileText
+} from 'lucide-react';
+import { 
+  auth, 
+  db, 
+  signInWithGoogle, 
+  logout, 
+  onAuthStateChanged, 
+  User as FirebaseUser,
+  handleFirestoreError,
+  OperationType,
+  testConnection
+} from './firebase';
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  onSnapshot 
+} from 'firebase/firestore';
 
 interface NewsItem {
   id: string;
   title: string;
-  url: string;
-  summary: string;
-  category: string;
+  link: string;
+  pubDate: string;
+  content: string;
   source: string;
-  imageUrl: string;
-  videoUrl?: string;
-  time: string;
-  timestamp: number;
+  image: string | null;
+  video?: string | null;
+  category?: string;
 }
-
-const variants = {
-  enter: (direction: number) => ({
-    x: direction > 0 ? '100%' : '-100%',
-    opacity: 1,
-  }),
-  center: {
-    zIndex: 1,
-    x: 0,
-    opacity: 1,
-    transition: {
-      x: { type: "spring", stiffness: 300, damping: 30 },
-      opacity: { duration: 0 }
-    }
-  },
-  exit: (direction: number) => ({
-    zIndex: 0,
-    x: direction < 0 ? '100%' : '-100%',
-    opacity: 1,
-    transition: {
-      x: { type: "spring", stiffness: 300, damping: 30 },
-      opacity: { duration: 0 }
-    }
-  })
-};
 
 const CATEGORIES = [
-  { id: 'all', label: 'Tutte', icon: LayoutGrid, color: 'bg-indigo-600', border: 'border-indigo-400/30' },
-  { id: 'cronaca', label: 'Cronaca', icon: BookOpen, color: 'bg-slate-700', border: 'border-slate-500/30' },
-  { id: 'mondo', label: 'Mondo', icon: Globe, color: 'bg-blue-500', border: 'border-blue-400/30' },
-  { id: 'regioni', label: 'Regioni', icon: MapPin, color: 'bg-amber-600', border: 'border-amber-400/30' },
-  { id: 'tecnologia', label: 'Tecnologia', icon: Cpu, color: 'bg-blue-600', border: 'border-blue-400/30' },
-  { id: 'finanza', label: 'Finanza', icon: TrendingUp, color: 'bg-emerald-600', border: 'border-emerald-400/30' },
-  { id: 'sport', label: 'Sport', icon: Trophy, color: 'bg-red-600', border: 'border-red-400/30' },
-  { id: 'scienza', label: 'Scienza', icon: FlaskConical, color: 'bg-slate-700', border: 'border-slate-500/30' },
-  { id: 'cultura', label: 'Cultura', icon: Palette, color: 'bg-pink-600', border: 'border-pink-400/30' },
-  { id: 'salute', label: 'Salute', icon: Stethoscope, color: 'bg-emerald-600', border: 'border-emerald-500/30' },
+  { id: 'all', label: 'Home', icon: <LayoutGrid size={20} />, color: '#00f3ff' },
+  { id: 'favorites', label: 'Favorites', icon: <Heart size={20} />, color: '#ff2e63' },
+  { id: 'playstation', label: 'PS5', icon: <div className="font-bold text-xs">PS</div>, color: '#0072ce' },
+  { id: 'xbox', label: 'Xbox', icon: <div className="font-bold text-xs">XB</div>, color: '#107c10' },
+  { id: 'nintendo', label: 'Switch', icon: <div className="font-bold text-xs">NT</div>, color: '#e60012' },
+  { id: 'pc', label: 'PC', icon: <Monitor size={20} />, color: '#bc13fe' },
+  { id: 'tech', label: 'Tech', icon: <Cpu size={20} />, color: '#39ff14' },
+  { id: 'mobile', label: 'Mobile', icon: <Smartphone size={20} />, color: '#ff00ff' },
 ];
 
-// ============================================================
-// AdSense In-Feed Card (fullscreen, appears every 5-8 posts)
-// ============================================================
-function AdCard({ direction, variants, onNext }: { direction: number; variants: any; onNext: () => void; key?: any }) {
-  useEffect(() => {
-    if (!document.getElementById('adsense-script')) {
-      const s = document.createElement('script');
-      s.id = 'adsense-script';
-      s.async = true;
-      s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1385801472165821';
-      s.crossOrigin = 'anonymous';
-      document.head.appendChild(s);
-    }
-    const timer = setTimeout(() => {
-      try {
-        (window as any).adsbygoogle = (window as any).adsbygoogle || [];
-        (window as any).adsbygoogle.push({});
-      } catch (e) {}
-    }, 300);
-    return () => clearTimeout(timer);
-  }, []);
-
-  return (
-    <motion.div
-      custom={direction}
-      variants={variants}
-      initial="enter"
-      animate="center"
-      exit="exit"
-      drag="x"
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.4}
-      onDragEnd={(_e: any, { offset }: any) => {
-        if (Math.abs(offset.x) > 50) onNext();
-      }}
-      className="absolute inset-0 flex flex-col items-center justify-center bg-black"
-    >
-      <div className="absolute top-16 left-0 right-0 z-10 flex justify-center">
-        <span className="text-[9px] text-white/30 uppercase tracking-[0.3em] font-bold px-4 py-1 border border-white/10 rounded-full backdrop-blur-sm">
-          Pubblicità
-        </span>
-      </div>
-      <div className="w-full flex items-center justify-center" style={{ height: '90vw', maxHeight: '85vh' }}>
-        <ins
-          className="adsbygoogle"
-          style={{ display: 'block', width: '100%', height: '100%' }}
-          data-ad-client="ca-pub-1385801472165821"
-          data-ad-slot="auto"
-          data-ad-format="auto"
-          data-full-width-responsive="true"
-        />
-      </div>
-      <button
-        onClick={onNext}
-        className="absolute bottom-14 right-6 text-[10px] text-white/30 uppercase tracking-widest p-3 border border-white/10 rounded-full hover:text-white/60 hover:border-white/30 transition-all"
-      >
-        Salta →
-      </button>
-    </motion.div>
-  );
-}
-
-function NewsCard({ 
-  currentItem, 
-  direction, 
-  displayedNews, 
-  currentIndex, 
-  setCurrentIndex, 
-  setDirection, 
-  favorites, 
-  toggleFavorite, 
-  user, 
-  selectedCategoryData,
-  variants,
-  isFlipped,
-  setIsFlipped
-}: any) {
-  const [isFlippedLocal, setIsFlippedLocal] = useState(false);
+const getCategory = (item: NewsItem) => {
+  const source = (item.source || '').toLowerCase();
+  const title = (item.title || '').toLowerCase();
+  const content = (item.content || '').toLowerCase();
   
-  // Use local state if prop is not provided, for flexibility
-  const flipped = isFlipped !== undefined ? isFlipped : isFlippedLocal;
-  const setFlipped = setIsFlipped !== undefined ? setIsFlipped : setIsFlippedLocal;
+  // PlayStation
+  if (
+    source === 'pushsquare' || 
+    source === 'ps_global' || 
+    source === 'ign_it' || // IGN often has broad coverage but prioritize PS if titles match
+    title.includes('ps5') || 
+    title.includes('playstation') || 
+    title.includes('sony') ||
+    title.includes('dualview') ||
+    title.includes('god of war') ||
+    title.includes('horizon') ||
+    title.includes('the last of us')
+  ) return 'playstation';
 
-  const getIframeUrl = (url: string) => {
-    const secureUrl = url.startsWith('http://') ? url.replace('http://', 'https://') : url;
-    // Use local /api/proxy (synchronized from GamesPulse for robust rendering)
-    return `/api/proxy?url=${encodeURIComponent(secureUrl)}`;
+  // Xbox
+  if (
+    source === 'purexbox' || 
+    source === 'xbox_global' || 
+    title.includes('xbox') || 
+    title.includes('microsoft') || 
+    title.includes('series x') || 
+    title.includes('series s') ||
+    title.includes('halo') ||
+    title.includes('forza') ||
+    title.includes('game pass')
+  ) return 'xbox';
+
+  // Nintendo
+  if (
+    source === 'nintendolife' || 
+    source === 'nintendo_it' || 
+    title.includes('nintendo') || 
+    title.includes('switch') || 
+    title.includes('mario') || 
+    title.includes('zelda') || 
+    title.includes('pokemon') || 
+    title.includes('metroid')
+  ) return 'nintendo';
+
+  // PC
+  if (
+    source === 'pcgamer' || 
+    source === 'kotaku' || // Kotaku covers many, but often PC/General
+    title.includes('pc master race') || 
+    title.includes('steam') || 
+    title.includes('epic games') || 
+    title.includes('rtx') || 
+    title.includes('geforce') ||
+    title.includes('amd') ||
+    title.includes('keyboard') ||
+    title.includes('mouse')
+  ) return 'pc';
+
+  // Mobile
+  if (
+    source === 'androidcentral' || 
+    source === 'macrumors' || 
+    title.includes('mobile') || 
+    title.includes('ios') || 
+    title.includes('android') || 
+    title.includes('iphone') || 
+    title.includes('smartphone') ||
+    title.includes('app store') ||
+    title.includes('google play')
+  ) return 'mobile';
+
+  // Tech & Hardware
+  if (
+    source === 'theverge' || 
+    source === 'engadget' || 
+    source === 'hdblog' || 
+    source === 'digitalfoundry' || 
+    source === 'everyeye' || // IT broad, but often tech focused
+    title.includes('gpu') || 
+    title.includes('cpu') || 
+    title.includes('hardware') || 
+    title.includes('tech') || 
+    title.includes('ai') || 
+    title.includes('openai') || 
+    title.includes('chatgpt')
+  ) return 'tech';
+  
+  return 'general';
+};
+
+const NEON_COLORS = [
+  'neon-border-blue hover:shadow-[0_0_40px_rgba(0,243,255,0.8)]',
+  'neon-border-pink hover:shadow-[0_0_40px_rgba(255,0,255,0.8)]',
+  'neon-border-green hover:shadow-[0_0_40px_rgba(57,255,20,0.8)]',
+  'neon-border-purple hover:shadow-[0_0_40px_rgba(188,19,254,0.8)]',
+];
+
+const NewsCard = ({ item, index, onInteraction, isFavorite, onToggleFavorite }: { 
+  item: NewsItem; 
+  index: number; 
+  onInteraction: () => void;
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
+}) => {
+  const [isFlipped, setIsFlipped] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [videoError, setVideoError] = useState(false);
+
+  useEffect(() => {
+    const main = document.querySelector('main');
+    if (isFlipped) {
+      if (main) {
+        main.style.overflowY = 'hidden';
+        main.classList.remove('snap-y', 'snap-mandatory');
+      }
+    } else {
+      if (main) {
+        main.style.overflowY = 'auto';
+        main.classList.add('snap-y', 'snap-mandatory');
+      }
+    }
+    return () => {
+      if (main) {
+        main.style.overflowY = 'auto';
+        main.classList.add('snap-y', 'snap-mandatory');
+      }
+    };
+  }, [isFlipped]);
+
+  const handleFlip = (e: React.MouseEvent) => {
+    e.preventDefault();
+    onInteraction();
+    setIsFlipped(!isFlipped);
+  };
+
+  const handleToggleFavorite = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onToggleFavorite();
   };
 
   return (
     <motion.div
-      key={currentItem.id}
-      custom={direction}
-      variants={variants}
-      initial="enter"
-      exit="exit"
-      drag={!flipped ? "x" : false}
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.4}
-      onDragEnd={(e, { offset, velocity }) => {
-        const swipe = Math.abs(offset.x) > 50 || Math.abs(velocity.x) > 200;
-        if (swipe) {
-          const nextIndex = (currentIndex + (offset.x > 0 ? -1 : 1) + displayedNews.length) % displayedNews.length;
-          setDirection(offset.x > 0 ? -1 : 1);
-          setCurrentIndex(nextIndex);
-          setIsFlipped(false);
-        }
-      }}
-      animate="center"
-      className="absolute inset-0 flex flex-col perspective-1000"
+      animate={{ rotateY: isFlipped ? 180 : 0 }}
+      transition={{ duration: 0.6, type: 'spring', stiffness: 260, damping: 20 }}
+      style={{ transformStyle: 'preserve-3d' }}
+      className="relative w-full h-full"
     >
-      <motion.div
-        animate={{ rotateY: flipped ? 180 : 0 }}
-        transition={{ duration: 0.6, type: 'spring', stiffness: 260, damping: 20 }}
-        style={{ transformStyle: 'preserve-3d' }}
-        className="relative w-full h-full"
+      {/* Front Side */}
+      <div 
+        style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'translateZ(1px)', pointerEvents: isFlipped ? 'none' : 'auto' }}
+        className="absolute inset-0 group bg-zinc-950 overflow-hidden transition-all duration-500 flex flex-col cursor-pointer hover:scale-[1.01] z-10"
+        onClick={handleFlip}
       >
-        {/* Front Side */}
-        <div 
-          className="absolute inset-0 flex flex-col preserve-3d"
-          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'translateZ(1px)', pointerEvents: flipped ? 'none' : 'auto' }}
-          onClick={() => setFlipped(true)}
-        >
-          <div className="absolute inset-x-0 top-0 h-[70%] z-0 bg-black overflow-hidden">
-            {(currentItem.videoUrl && (currentItem.videoUrl.includes('embed') || currentItem.videoUrl.includes('youtube') || currentItem.videoUrl.includes('vimeo'))) ? (
+        {/* Full Screen Background Image or Video */}
+        {(item.video && !videoError) ? (
+          <div className="absolute top-[10%] left-0 right-0 bottom-[230px] overflow-hidden bg-black">
+            {item.video.includes('embed') || item.video.includes('youtube') || item.video.includes('vimeo') ? (
               (() => {
-                const base = currentItem.videoUrl;
+                const base = item.video || '';
                 let finalUrl = base;
                 if (base.includes('youtube.com') || base.includes('youtu.be')) {
-                  const videoId = (base.split('/').pop() || '').split('?')[0];
-                  finalUrl = `${base}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&rel=0&modestbranding=1&origin=${window.location.origin}`;
+                  let videoId = (base.split('/').pop() || '').split('?')[0];
+                  if (base.includes('watch?v=')) {
+                    videoId = new URL(base).searchParams.get('v') || videoId;
+                  }
+                  finalUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&rel=0&modestbranding=1&origin=${window.location.origin}`;
                 } else if (base.includes('vimeo.com')) {
                   finalUrl = `${base}?autoplay=1&muted=1&loop=1&background=1`;
                 }
@@ -200,537 +258,265 @@ function NewsCard({
                 return (
                   <iframe
                     src={finalUrl}
-                    className="w-full h-full scale-[1.5] pointer-events-none opacity-80"
+                    className="w-full h-full scale-[1.5] pointer-events-none brightness-[1.5] contrast-[1.2] saturate-[1.3]"
                     allow="autoplay; encrypted-media"
-                    title={currentItem.title}
+                    title={item.title}
+                    onError={() => setVideoError(true)}
                   />
                 );
               })()
-            ) : currentItem.videoUrl ? (
-              <video
-                src={currentItem.videoUrl}
-                autoPlay
-                loop
-                muted
-                playsInline
-                className="w-full h-full object-cover opacity-80 scale-150 origin-top"
-              />
             ) : (
-              <div className="relative w-full h-full scale-150 origin-top">
-                <img 
-                  src={currentItem.imageUrl} 
-                  alt={currentItem.title}
-                  referrerPolicy="no-referrer"
-                  className="absolute inset-0 w-full h-full object-cover object-top blur-2xl opacity-40 scale-110"
-                />
-                <img 
-                  src={currentItem.imageUrl} 
-                  alt={currentItem.title}
-                  referrerPolicy="no-referrer"
-                  className="relative w-full h-full object-contain object-top z-10"
-                />
-              </div>
+              <video
+                src={item.video}
+                autoPlay
+                muted
+                loop
+                playsInline
+                className="w-full h-full object-cover brightness-[1.5] contrast-[1.2] saturate-[1.3]"
+                onError={() => setVideoError(true)}
+              />
             )}
-            <div className="absolute inset-x-0 bottom-0 h-[80%] z-20 pointer-events-none bg-gradient-to-t from-black via-black/90 to-transparent opacity-100" />
-            <div className="absolute inset-x-0 bottom-0 h-1/2 z-20 pointer-events-none bg-gradient-to-t from-black to-transparent opacity-100" />
-            <div className="absolute inset-0 z-20 pointer-events-none shadow-[inset_0_-250px_200px_-100px_rgba(0,0,0,1)]" />
+            <div className="absolute inset-0 bg-transparent"></div>
+            {/* Vignette - Reduced bottom significantly by 30% (80% top, 40% bottom) v1.0.2 */}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/20 via-transparent to-black/40"></div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent"></div>
+            <div className="absolute top-0 left-0 right-0 h-28 bg-gradient-to-b from-black/55 to-transparent"></div>
+          </div>
+        ) : (item.image && !imageError) ? (
+          <div className="absolute top-[10%] left-0 right-0 bottom-[230px] overflow-hidden">
+            <img 
+              src={item.image} 
+              alt={item.title}
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-100 brightness-[1.5] saturate-[1.3] contrast-[1.1]"
+              referrerPolicy="no-referrer"
+              onError={() => setImageError(true)}
+            />
+            {/* Vignette Effect - Increased center brightness */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.15)_0%,_transparent_45%,_rgba(0,0,0,0.65)_100%)]"></div>
+            {/* Multi-layered gradient - Reduced bottom significantly (80% top, 40% bottom) v1.0.2 */}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/20 via-transparent to-black/40"></div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent"></div>
+            {/* Additional Top Vignette Edge */}
+            <div className="absolute top-0 left-0 right-0 h-28 bg-gradient-to-b from-black/55 to-transparent"></div>
+          </div>
+        ) : (
+            <div className="absolute top-[10%] left-0 right-0 bottom-[230px] bg-zinc-900/80">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-from)_0%,_transparent_70%)] from-neon-blue/10 opacity-50"></div>
+          </div>
+        )}
+        
+        {/* Content Overlay */}
+        <div className="relative p-6 md:p-12 flex flex-col h-full justify-end z-10 font-montserrat">
+          {/* Info above title */}
+          <div className="flex items-center gap-3 mb-4 translate-y-[15px]">
+            <span className="text-[12px] font-bold text-white/60">
+              {new Date(item.pubDate).toLocaleDateString()}
+            </span>
+            <span className="px-3 py-1 bg-neon-blue/20 backdrop-blur-md border border-neon-blue/30 rounded-full text-[9px] font-bold tracking-widest uppercase text-neon-blue">
+              {item.source}
+            </span>
           </div>
 
-          <div className="relative z-20 flex-1 flex flex-col justify-end p-8 md:p-16 pt-0 pb-28 md:pb-36 mt-0">
-            <motion.div 
-              initial="hidden"
-              animate="visible"
-              variants={{
-                hidden: { opacity: 0 },
-                visible: {
-                  opacity: 1,
-                  transition: {
-                    staggerChildren: 0.15,
-                    delayChildren: 0.2
-                  }
-                }
-              }}
-              className="max-w-2xl space-y-4"
-            >
-              <div className="overflow-hidden">
-                <h2 className="text-3xl md:text-5xl font-black text-white leading-tight tracking-tighter uppercase flex flex-wrap gap-x-3">
-                  {currentItem.title.split(' ').map((word: string, i: number) => (
-                    <motion.span
-                      key={i}
-                      variants={{
-                        hidden: { y: "100%", opacity: 0, filter: 'blur(10px)' },
-                        visible: { 
-                          y: 0, 
-                          opacity: 1, 
-                          filter: 'blur(0px)',
-                          transition: { type: "spring", stiffness: 200, damping: 20 }
-                        }
-                      }}
-                      className="inline-block"
-                    >
-                      {word}
-                    </motion.span>
-                  ))}
-                </h2>
-              </div>
-              
-              <motion.div
-                variants={{
-                  hidden: { opacity: 0, x: -30 },
-                  visible: { 
-                    opacity: 1, 
-                    x: 0,
-                    transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] }
-                  }
-                }}
-                className="relative"
-              >
-                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-pink-500 to-purple-600 shadow-[0_0_10px_rgba(236,72,153,0.5)]" />
-                <p className="text-lg md:text-xl text-white/90 font-medium leading-tight pl-6 drop-shadow-md italic line-clamp-8 max-w-md">
-                  {currentItem.summary}
-                </p>
-              </motion.div>
-
-              <motion.div
-                variants={{
-                  hidden: { opacity: 0, scale: 0.8 },
-                  visible: { 
-                    opacity: 1, 
-                    scale: 1,
-                    transition: { delay: 0.6, duration: 0.4 }
-                  }
-                }}
-                className="flex items-center gap-4 pt-2"
-              >
-                <div className="flex items-center gap-2">
-                  <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border ${selectedCategoryData?.border || 'border-white/20'} ${selectedCategoryData?.color || 'bg-white/10'} text-white shadow-[0_0_15px_rgba(255,255,255,0.1)]`}>
-                    {currentItem.category}
-                  </span>
-                  {favorites[currentItem.id] && (
-                    <motion.div
-                      initial={{ scale: 0, rotate: -45 }}
-                      animate={{ scale: 1, rotate: 0 }}
-                      className="w-6 h-6 rounded-full bg-red-600 flex items-center justify-center shadow-[0_0_15px_rgba(220,38,38,0.6)]"
-                    >
-                      <Heart className="w-3 h-3 text-white fill-white" />
-                    </motion.div>
-                  )}
-                </div>
-                <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest ml-auto">
-                  {currentItem.source} • {currentItem.time}
-                </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleFavorite(currentItem);
-                  }}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                    favorites[currentItem.id] ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(220,38,38,0.6)]' : 'bg-white/10 text-white/60 hover:bg-white/20'
-                  }`}
-                >
-                  <Heart className={`w-4 h-4 ${favorites[currentItem.id] ? 'fill-white' : ''}`} />
-                </button>
-              </motion.div>
-              
-              <motion.p
-                variants={{
-                  hidden: { opacity: 0 },
-                  visible: { 
-                    opacity: 1, 
-                    transition: { delay: 0.8, duration: 0.5 }
-                  }
-                }}
-                className="text-white/20 text-[9px] font-bold uppercase tracking-[0.2em] text-center mt-6"
-              >
-                Premi l'immagine per vedere il sito
-              </motion.p>
-            </motion.div>
+          <div 
+            className="overflow-y-auto custom-scrollbar pr-4 mb-8 max-h-[75vh] mt-[25px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-[24px] md:text-[54px] font-bold leading-[1] mb-6 group-hover:text-neon-blue transition-colors tracking-tighter drop-shadow-[0_4px_15px_rgba(0,0,0,0.9)]">
+              {item.title}
+            </h3>
+            
+            <p className="text-[12px] md:text-[18px] text-zinc-100 font-medium leading-relaxed drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] line-clamp-4">
+              {item.content}
+            </p>
           </div>
         </div>
+      </div>
 
-        {/* Back Side (Article Iframe) */}
-        <div 
-          className="absolute inset-0 bg-neutral-100 overflow-hidden flex flex-col"
-          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)', pointerEvents: flipped ? 'auto' : 'none' }}
+      {/* Back Side (The Article) */}
+      <div 
+        style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg) translateZ(1px)', pointerEvents: isFlipped ? 'auto' : 'none' }}
+        className="absolute inset-0 bg-white overflow-hidden flex flex-col shadow-2xl"
+      >
+        {/* Minimal Close Button - Positioned at the bottom right */}
+        <button 
+          onClick={handleFlip}
+          className="absolute bottom-[42px] right-8 z-30 p-3.5 rounded-full bg-black/80 text-white backdrop-blur-xl hover:bg-red-500 transition-all active:scale-90 shadow-2xl border border-white/20"
         >
-          <div className="h-14 bg-white border-b border-black/5 flex items-center justify-between px-4 z-[120]">
-            <button 
-               onClick={(e) => {
-                 e.stopPropagation();
-                 setFlipped(false);
-               }}
-               className="w-10 h-10 rounded-full bg-black text-white hover:bg-neutral-800 transition-all flex items-center justify-center shadow-lg active:scale-90"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <div className="flex-1 px-4 truncate text-center">
-              <span className="text-xs font-bold text-black/60 uppercase tracking-widest truncate">{currentItem.source}</span>
-            </div>
-            <a 
-              href={currentItem.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-10 h-10 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 transition-all flex items-center justify-center shadow-lg active:scale-90"
-              title="Apri nel browser"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <ExternalLink className="w-5 h-5" />
-            </a>
-          </div>
-          
-          <div className="flex-1 relative w-full h-full bg-white">
-            {!flipped ? null : (
-              <>
-                <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center z-0 opacity-40">
-                  <RefreshCw className="w-8 h-8 animate-spin mb-4" />
-                  <p className="text-xs font-medium">Caricamento in corso...</p>
-                  <p className="text-[10px] mt-2 max-w-[200px]">Alcuni siti potrebbero bloccare la visualizzazione in questa app.</p>
-                </div>
-                <iframe 
-                  src={getIframeUrl(currentItem.url)} 
-                  className="relative z-10 w-full h-full border-none"
-                  title={currentItem.title}
-                  loading="lazy"
-                  style={{ overflow: 'auto' }}
-                  onError={() => {
-                    // This rarely triggers for cross-origin iframes but good to have
-                  }}
-                />
-              </>
-            )}
-          </div>
+          <X size={23} />
+        </button>
+
+        <div className="flex-1 relative w-full h-full overflow-y-auto">
+          {isFlipped && (
+            <iframe 
+              src={`/api/proxy?url=${encodeURIComponent(item.link)}`} 
+              className="w-full h-full border-none"
+              title={item.title}
+              loading="lazy"
+              style={{ overflow: 'auto' }}
+            />
+          )}
         </div>
-      </motion.div>
+      </div>
     </motion.div>
   );
-}
-
-export const defaultSeo: Record<string, any> = {
-  all: {
-    title: "SpotSmart Notizie 2024-2025 | Il tuo Hub Intelligente di Informazione",
-    description: "SpotSmart 2024/2025: Il tuo hub intelligente per le notizie in tempo reale. Cronaca, Mondo, Tecnologia, Finanza e Scienza in un'unica piattaforma innovativa.",
-    keywords: "notizie oggi, news tempo reale, attualità 2025, aggregatore notizie, informazione intelligente, spotsmart",
-    url: "https://spotsmart.it/explore/all"
-  },
-  cronaca: {
-    title: "Ultime Notizie Cronaca Italia 2024-2025 | SpotSmart Live",
-    description: "Resta aggiornato sulla cronaca italiana e internazionale: le ultime notizie, inchieste e approfondimenti sui fatti che contano. Aggiornamenti real-time da ANSA e Adnkronos.",
-    keywords: "cronaca italia oggi, notizie cronaca ultime ore, inchieste giudiziarie, sicurezza urbana 2025, politica italiana news",
-    url: "https://spotsmart.it/explore/cronaca"
-  },
-  mondo: {
-    title: "Notizie dal Mondo e Geopolitica 2025 | SpotSmart Estero",
-    description: "Analisi approfondite su geopolitica, conflitti e sfide globali. Rimani informato sugli eventi che plasmano il nostro futuro con Reuters, BBC e fonti internazionali.",
-    keywords: "notizie internazionali, geopolitica 2025, crisi medio oriente, elezioni usa 2024 analisi, breaking news mondo",
-    url: "https://spotsmart.it/explore/mondo"
-  },
-  regioni: {
-    title: "Notizie Locali e Cronaca Regionale | SpotSmart Territorio",
-    description: "Le voci del territorio italiano in tempo reale. Cronaca, eventi e politica locale da Messaggero, Gazzettino e le principali testate regionali.",
-    keywords: "notizie locali, cronaca regionale, news territorio, gazzettino, messaggero, eventi città italia",
-    url: "https://spotsmart.it/explore/regioni"
-  },
-  tecnologia: {
-    title: "Tecnologia, AI e Innovazione 2025 | SpotSmart Tech",
-    description: "Scopri le innovazioni in AI generativa, robotica e cybersecurity. Il tuo portale sulle tendenze tech che stanno ridefinendo il futuro con Wired e TechCrunch.",
-    keywords: "tecnologia 2025, ai generativa news, cybersecurity aziendale, robotica avanzata, realtà virtuale news, innovazione digitale",
-    url: "https://spotsmart.it/explore/tecnologia"
-  },
-  finanza: {
-    title: "Economia e Finanza: Mercati e Borse 2025 | SpotSmart Business",
-    description: "Previsioni mercati globali, investimenti e andamento economico. Analisi per decisioni informate con Il Sole 24 Ore e CNBC. Borsa Italiana in tempo reale.",
-    keywords: "mercati finanziari 2025, investimenti sicuri, borsa italiana oggi, inflazione italia news, economia globale, trading online",
-    url: "https://spotsmart.it/explore/finanza"
-  },
-  sport: {
-    title: "Ultime Notizie Sport, Risultati e Calciomercato | SpotSmart Sport",
-    description: "Tutte le ultime notizie su Calcio Serie A, Tennis ATP, F1 e Olimpiadi. Risultati in diretta, interviste e analisi esclusive dalla Gazzetta e Tuttosport.",
-    keywords: "risultati serie a 2025, calciomercato live, tennis atp news, formula 1 oggi, moto gp risultati, sport news italia",
-    url: "https://spotsmart.it/explore/sport"
-  },
-  scienza: {
-    title: "Scienza, Spazio e Medicina 2025 | SpotSmart Science",
-    description: "Le scoperte che cambiano il mondo. Dalle missioni spaziali NASA ai progressi della medicina e ricerca scientifica. Resta aggiornato con Nature e ScienceDaily.",
-    keywords: "scoperte scientifiche 2025, esplorazione spaziale, news medicina 2024, astronomia nasa, ricerca scientifica innovazione",
-    url: "https://spotsmart.it/explore/scienza"
-  },
-  cultura: {
-    title: "Cultura, Arte e Tendenze Sociali 2025 | SpotSmart Culture",
-    description: "Esplora le nuove tendenze artistiche, letterarie e sociali. Approfondimenti su eventi, mostre e il dibattito culturale contemporaneo in Italia e nel mondo.",
-    keywords: "eventi culturali 2025, arte contemporanea news, libri novità, festival cinema italia, tendenze sociali, mostre d'arte",
-    url: "https://spotsmart.it/explore/cultura"
-  },
-  salute: {
-    title: "Salute, Benessere e News Sanità Italia | SpotSmart Health",
-    description: "Le ultime notizie sulla sanità pubblica, consigli per il benessere e aggiornamenti sulla prevenzione. Prendi cura di te con informazioni mediche affidabili.",
-    keywords: "sanità italia 2025, benessere mentale news, prevenzione malattie, alimentazione sana, news medicina, stili di vita sani",
-    url: "https://spotsmart.it/explore/salute"
-  }
 };
 
 export default function App() {
-  const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
-  const [favorites, setFavorites] = useState<Record<string, any>>({});
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [favorites, setFavorites] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [user, setUser] = useState<User | null>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [direction, setDirection] = useState(0);
-  const [isFlipped, setIsFlipped] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
-  const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState('news');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(10);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [showCookieBanner, setShowCookieBanner] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [newsLoading, setNewsLoading] = useState(true);
+  const [splashBg, setSplashBg] = useState('');
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
-  const [seoConfigs, setSeoConfigs] = useState<Record<string, any>>({});
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [adminError, setAdminError] = useState('');
-  const [isSavingSeo, setIsSavingSeo] = useState(false);
-  const [analyticsConfig, setAnalyticsConfig] = useState<any>({ trackingId: '', enabled: true, verificationTag: '' });
-  const [adsenseConfig, setAdsenseConfig] = useState<any>({ enabled: false, client: '', script: '', adsTxt: '', metaTag: '' });
-  const [isSavingAdsense, setIsSavingAdsense] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<{type: 'success' | 'error' | 'info' | null, message: string}>({ type: null, message: '' });
-  const [realTraffic, setRealTraffic] = useState<{today: number, total: number}>({ today: 0, total: 0 });
-  
-  const [adminTab, setAdminTab] = useState<'seo' | 'sources' | 'analytics' | 'adsense'>('seo');
+  const [seoConfigs, setSeoConfigs] = useState<any>({});
+  const [realTraffic, setRealTraffic] = useState<any>({ total: 0, today: 0 });
   const [newsSources, setNewsSources] = useState<any[]>([]);
-  const [newSource, setNewSource] = useState({ name: '', url: '', cat: 'Cronaca' });
-  const [deleteConfirm, setDeleteConfirm] = useState<{show: boolean, id: string, name: string} | null>(null);
+  const [newSource, setNewSource] = useState({ name: '', url: '', cat: 'News' });
+  const [adsenseConfig, setAdsenseConfig] = useState<any>({ enabled: false, script: '', adsTxt: '', metaTag: '' });
+  const [isSavingAdsense, setIsSavingAdsense] = useState(false);
+  const [adminTab, setAdminTab] = useState('seo');
+  const [saveStatus, setSaveStatus] = useState<{type: 'success' | 'error' | null, message: string}>({ type: null, message: '' });
 
-  const confirmDelete = (id: string, name: string) => {
-    setDeleteConfirm({ show: true, id, name });
-  };
+  const SPLASH_BGS = [
+    'https://images.unsplash.com/photo-1614850523296-d8c1af93d400?q=80&w=1920&auto=format&fit=crop',
+    'https://images.unsplash.com/photo-1620641788421-7a1c342ea42e?q=80&w=1920&auto=format&fit=crop',
+    'https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=1920&auto=format&fit=crop',
+    'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=1920&auto=format&fit=crop',
+    'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1920&auto=format&fit=crop'
+  ];
 
-  const saveSources = async (sources: any[]) => {
-    try {
-      await fetch('/api/admin/sources', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auth: { username: 'admin', password: 'accessometti' }, sources })
-      });
-    } catch (e) {
-      console.warn('[saveSources] failed:', e);
-    }
-  };
-
-  const handleToggleSource = (id: string) => {
-    if (!id) return;
-    console.log("[Admin] Toggling source:", id);
-    const updated = newsSources.map(s =>
-      s.id === id ? { ...s, active: s.active === false ? true : false } : s
-    );
-    setNewsSources(updated);
-    
-    // Direct Firestore update (functions are already imported at top of file)
-    const changed = updated.find(s => s.id === id);
-    if (changed) {
-      const sourceRef = doc(db, 'news_sources', id);
-      updateDoc(sourceRef, { active: changed.active }).catch(err => {
-        console.error("Firestore update failed:", err);
-      });
-    }
-    
-    saveSources(updated);
-  };
-  const splashBg = useMemo(() => `https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&q=80&w=1920&h=1080`, []);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-
-  // Real-ish traffic data generation
-  const trafficData = useMemo(() => {
-    const seed = new Date().toDateString();
-    let hash = 0;
-    for (let i = 0; i < seed.length; i++) {
-        hash = ((hash << 5) - hash) + seed.charCodeAt(i);
-        hash |= 0;
-    }
-    
-    return Array.from({ length: 24 }).map((_, i) => {
-        // Create a bell-like curve centered around midday (13-14)
-        const hourPos = i;
-        const center = 13.5;
-        const width = 6;
-        const base = 80 * Math.exp(-Math.pow(hourPos - center, 2) / (2 * Math.pow(width, 2)));
-        const noise = (Math.abs((hash * (i + 1)) % 100)) / 5;
-        return Math.min(100, Math.max(5, Math.floor(base + noise + 10)));
-    });
-  }, []);
-
-  // Real-ish monetization data generation (seeded by REAL server traffic)
-  const monetizationStats = useMemo(() => {
-    const visitsToday = realTraffic.today || 0;
-    const rpm = 2.45; // Revenue per 1000 visits
-    return {
-       today: ((visitsToday / 1000) * rpm).toFixed(2),
-       yesterday: (((visitsToday * 0.95) / 1000) * rpm).toFixed(2),
-       month: (((visitsToday * 28.5) / 1000) * rpm).toFixed(2),
-       clicks: Math.floor(visitsToday * 0.024) // 2.4% CTR
-    };
-  }, [realTraffic]);
-
-  // Fetch Real Traffic Stats direct from Firestore (works on Vercel too)
+  // Splash Screen Logic
   useEffect(() => {
-    const fetchTraffic = async () => {
-      try {
-        const snap = await getDoc(doc(db, 'traffic', 'stats'));
-        if (snap.exists()) {
-          const data = snap.data();
-          const today = new Date().toDateString();
-          setRealTraffic({
-            today: data.lastUpdate === today ? (data.today || 0) : 0,
-            total: data.total || 0
-          });
-        }
-      } catch (e) {
-        // Fallback to local API
-        try {
-          const res = await fetch('/api/admin/traffic');
-          const data = await res.json();
-          setRealTraffic({ today: data.today, total: data.total });
-        } catch (e2) {
-          console.error('Traffic fetch failed:', e2);
-        }
-      }
-    };
-    fetchTraffic();
-    const interval = setInterval(fetchTraffic, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const selectedCategoryData = CATEGORIES.find(c => c.id === selectedCategory);
-  const SelectedCategoryIcon = selectedCategoryData?.icon;
-
-  useEffect(() => {
-    const timer = setTimeout(() => setShowSplash(false), 500);
-    const consent = localStorage.getItem('cookieConsent');
-    if (!consent) {
-      setTimeout(() => setShowCookieBanner(true), 4000);
-    }
+    setSplashBg(SPLASH_BGS[Math.floor(Math.random() * SPLASH_BGS.length)]);
+    
+    // Ensure splash stays at least 3 seconds, but waits for loading to finish
+    // Ensure splash stays at least 3s
+    const timer = setTimeout(() => {
+      // Logic handled by combined loading effect
+    }, 3000);
     return () => clearTimeout(timer);
   }, []);
 
-  // Load SEO Configs
+  // Monitor loading to hide splash
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'seo_configs'), async (snapshot) => {
-      if (snapshot.empty) {
-        console.log("Seeding all SEO configs...");
-        try {
-          const promises = Object.entries(defaultSeo).map(([id, data]) => 
-            setDoc(doc(db, 'seo_configs', id), { ...data, adsense: "", updatedAt: Timestamp.now() })
-          );
-          await Promise.all(promises);
-        } catch (e) {
-          console.error("Firestore SEO seed failed:", e);
-        }
-        setSeoConfigs(defaultSeo); // Ensure UI gets it immediately regardless of DB error
-      } else {
-        const configs: Record<string, any> = {};
-        snapshot.forEach(doc => {
-          configs[doc.id] = doc.data();
-        });
-        
-        // Ensure ALL categories have a config, even if some were deleted
-        let missingFound = false;
-        try {
-          const missingPromises = Object.entries(defaultSeo).map(async ([id, data]) => {
-            if (!configs[id]) {
-              missingFound = true;
-              configs[id] = { ...data, adsense: "", updatedAt: Timestamp.now() }; // Update locally
-              await setDoc(doc(db, 'seo_configs', id), configs[id]);
-            }
-          });
-          if (missingFound) await Promise.all(missingPromises);
-        } catch (e) {
-          console.error("Firestore SEO missing seed failed:", e);
-        }
-        
-        setSeoConfigs(configs);
-      }
-    }, (error) => {
-      console.error("SEO onSnapshot error:", error);
-      setSeoConfigs(defaultSeo);
-    });
-    return () => unsub();
+    if (!loading && !newsLoading) {
+      const timer = setTimeout(() => setShowSplash(false), 800);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, newsLoading]);
+
+  // Cookie Consent Check
+  useEffect(() => {
+    const consent = localStorage.getItem('cookieConsent');
+    if (!consent) {
+      const timer = setTimeout(() => setShowCookieBanner(true), 2000);
+      return () => clearTimeout(timer);
+    }
   }, []);
 
-  // Load & Seed News Sources
+  const handleCookieConsent = (accepted: boolean) => {
+    localStorage.setItem('cookieConsent', accepted ? 'accepted' : 'rejected');
+    setShowCookieBanner(false);
+  };
+
+  // Auth and Firestore Sync
   useEffect(() => {
-    const fetchLocalSources = async () => {
+    testConnection();
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setIsAuthReady(true);
+      if (!currentUser) {
+        // Fallback to local storage if not logged in
+        const saved = localStorage.getItem('gaming_news_favorites');
+        setFavorites(saved ? JSON.parse(saved) : []);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthReady || !user) return;
+
+    const userRef = doc(db, 'users', user.uid);
+    
+    // Initial profile check/creation
+    const checkProfile = async () => {
       try {
-        const res = await fetch('/api/admin/sources');
-        const localSources = await res.json();
-        if (localSources && localSources.length > 0) {
-          setNewsSources(localSources);
-        } else {
-          setNewsSources(FEEDS as any[]);
+        const snap = await getDoc(userRef);
+        if (!snap.exists()) {
+          await setDoc(userRef, {
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName,
+            photoURL: user.photoURL,
+            favorites: favorites, // Sync local favorites on first login
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
         }
-      } catch (e) {
-        setNewsSources(FEEDS as any[]);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
       }
     };
+    checkProfile();
 
-    const unsub = onSnapshot(collection(db, 'news_sources'), async (snapshot) => {
-      if (snapshot.empty) {
-        console.log("Seeding news sources...");
-        // 1. Instantly use local FEEDS so UI doesn't break
-        fetchLocalSources();
-
-        // 2. Try to seed Firestore (catch error to prevent UI crash if rules block it)
-        try {
-          const promises = FEEDS.map(source => addDoc(collection(db, 'news_sources'), source));
-          await Promise.all(promises);
-        } catch (e) {
-          console.error("Firestore seed failed (likely permission rules):", e);
-        }
-
-        // 3. Sync with local server API
-        try {
-          await fetch('/api/admin/sources', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              auth: { username: 'admin', password: 'accessometti' },
-              sources: FEEDS
-            })
-          });
-        } catch (e) {
-          console.error("Local sync error during seeding:", e);
-        }
-      } else {
-        const sources: any[] = [];
-        snapshot.forEach(doc => {
-          sources.push({ id: doc.id, ...doc.data() });
-        });
-        setNewsSources(sources);
+    // Real-time sync
+    const unsub = onSnapshot(userRef, (doc) => {
+      if (doc.exists()) {
+        setFavorites(doc.data().favorites || []);
       }
     }, (error) => {
-      console.error("Firestore onSnapshot error:", error);
-      // Fallback to local sources if Firestore is entirely unreachable/blocked
-      fetchLocalSources();
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
     });
+
     return () => unsub();
-  }, []);
+  }, [user, isAuthReady]);
 
-  // Load Analytics Config
+  // Save to local storage only when NOT logged in
   useEffect(() => {
-    // Fetch Analytics from Firestore first (always works), fallback to API
-    getDoc(doc(db, 'configs', 'analytics'))
-      .then(snap => { if (snap.exists()) setAnalyticsConfig(snap.data()); })
-      .catch(() => fetch('/api/admin-analytics').then(r => r.json()).then(setAnalyticsConfig).catch(() => {}));
+    if (!user && isAuthReady) {
+      localStorage.setItem('gaming_news_favorites', JSON.stringify(favorites));
+    }
+  }, [favorites, user, isAuthReady]);
 
-    // Fetch AdSense from Firestore first (always works), fallback to API
-    getDoc(doc(db, 'configs', 'adsense'))
-      .then(snap => { if (snap.exists()) setAdsenseConfig(snap.data()); })
-      .catch(() => fetch('/api/admin-adsense').then(r => r.json()).then(setAdsenseConfig).catch(() => {}));
-  }, []);
+  const toggleFavorite = async (id: string) => {
+    const newFavorites = favorites.includes(id) 
+      ? favorites.filter(fid => fid !== id) 
+      : [...favorites, id];
+    
+    setFavorites(newFavorites);
+
+    if (user) {
+      try {
+        const userRef = doc(db, 'users', user.uid);
+        await updateDoc(userRef, { 
+          favorites: newFavorites,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}`);
+      }
+    }
+  };
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -740,1030 +526,554 @@ export default function App() {
       setShowAdminDashboard(true);
       setAdminError('');
     } else {
-      setAdminError('Credenziali non valide');
+      setAdminError('Access Denied: Incorrect Credentials');
     }
   };
 
-  const saveAnalytics = async (data: any) => {
-    setIsSavingAdsense(true);
+  const saveSeoConfig = async (category: string, data: any) => {
     try {
-      // Try API first
-      await fetch('/api/admin/analytics', {
+      const response = await fetch('/api/admin/seo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auth: { username: 'admin', password: 'accessometti' }, data })
+        body: JSON.stringify({
+          auth: { username: 'admin', password: 'accessometti' },
+          category,
+          data
+        })
       });
-
-      // Update Firestore manually too
-      await setDoc(doc(db, 'configs', 'analytics'), data);
-
-      setSaveStatus({ type: 'success', message: 'Configurazione Analytics salvata con successo!' });
-    } catch (err) {
-      console.error(err);
-      setSaveStatus({ type: 'error', message: 'Errore durante il salvataggio Analytics.' });
-    } finally {
-      setIsSavingAdsense(false);
-    }
-  };
-
-  const resetServerTraffic = async () => {
-    if (!window.confirm("Sei sicuro di voler azzerare TUTTI i dati del traffico (totale e giornaliero)?")) return;
-    try {
-      const res = await fetch('/api/admin/traffic/reset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auth: { username: 'admin', password: 'accessometti' } })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setRealTraffic({ today: data.today, total: data.total });
-        alert("Dati traffico azzerati con successo!");
+      if (response.ok) {
+        setSaveStatus({ type: 'success', message: 'Configurazione SEO salvata con successo!' });
+        setTimeout(() => setSaveStatus({ type: null, message: '' }), 3000);
       }
     } catch (e) {
-      alert("Errore durante il reset del traffico.");
+      setSaveStatus({ type: 'error', message: 'Errore durante il salvataggio.' });
     }
+  };
+
+  const fetchAdminData = async () => {
+    try {
+      const [seoRes, trafficRes, sourcesRes, adsRes] = await Promise.all([
+        fetch('/api/admin/seo'),
+        fetch('/api/admin/traffic'),
+        fetch('/api/admin/sources'),
+        fetch('/api/admin/adsense')
+      ]);
+      setSeoConfigs(await seoRes.json());
+      setRealTraffic(await trafficRes.json());
+      setNewsSources(await sourcesRes.json());
+      setAdsenseConfig(await adsRes.json());
+    } catch (e) {}
+  };
+
+  const saveSources = async (sources: any[]) => {
+    try {
+      await fetch('/api/admin/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auth: { username: 'admin', password: 'accessometti' }, sources })
+      });
+      setSaveStatus({ type: 'success', message: 'Fonti RSS aggiornate!' });
+      setTimeout(() => setSaveStatus({ type: null, message: '' }), 3000);
+    } catch (e) {}
   };
 
   const saveAdSense = async (data: any) => {
     setIsSavingAdsense(true);
-    setSaveStatus({ type: null, message: '' });
-
     try {
-      // Direct call to local server first since it now handles both disk and cloud sync
-      const res = await fetch('/api/admin/adsense', {
+      await fetch('/api/admin/adsense', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ auth: { username: 'admin', password: 'accessometti' }, data })
       });
-
-      if (!res.ok) {
-        // Fallback for when running strictly on Vercel without local server
-        await setDoc(doc(db, 'configs', 'adsense'), data);
-      }
-
-      setAdsenseConfig(data);
-      setSaveStatus({
-        type: 'success',
-        message: 'Configurazione AdSense salvata! Le modifiche sono ora attive e sincronizzate.'
-      });
-    } catch (err) {
-      console.error("[AdSense] Save failed:", err);
-      setSaveStatus({
-        type: 'error',
-        message: 'Errore durante il salvataggio. Verifica la connessione.'
-      });
-    } finally {
-      setIsSavingAdsense(false);
-    }
-  };
-
-  const deleteSource = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'news_sources', id));
-      // Server-side sync handled by onSnapshot & explicit API call if needed
-      const updated = newsSources.filter(s => s.id !== id);
-      await fetch('/api/admin/sources', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          auth: { username: 'admin', password: 'accessometti' },
-          sources: updated
-        })
-      });
+      setSaveStatus({ type: 'success', message: 'Configurazione AdSense salvata!' });
+      setTimeout(() => setSaveStatus({ type: null, message: '' }), 3000);
     } catch (e) {}
+    setIsSavingAdsense(false);
   };
 
-  const addSource = async () => {
+  const addSource = () => {
     if (!newSource.name || !newSource.url) return;
-    try {
-      const docRef = await addDoc(collection(db, 'news_sources'), newSource);
-      const updated = [...newsSources, { id: docRef.id, ...newSource }];
-      await fetch('/api/admin/sources', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          auth: { username: 'admin', password: 'accessometti' },
-          sources: updated
-        })
-      });
-      setNewSource({ name: '', url: '', cat: 'Cronaca' });
-    } catch (e) {}
+    const updated = [...newsSources, { ...newSource, id: Math.random().toString() }];
+    setNewsSources(updated);
+    saveSources(updated);
+    setNewSource({ name: '', url: '', cat: 'News' });
   };
 
-  const saveSeoConfig = async (catId: string, data: any) => {
-    setIsSavingSeo(true);
-    try {
-      // 1. Save to Firestore for real-time sync across clients (if any)
-      await setDoc(doc(db, 'seo_configs', catId), {
-        ...data,
-        updatedAt: Timestamp.now()
-      }, { merge: true });
+  const deleteSource = (id: string) => {
+    const updated = newsSources.filter(s => s.id !== id);
+    setNewsSources(updated);
+    saveSources(updated);
+  };
 
-      // 2. Save to local server JSON for crawler-visible metadata injection
-      await fetch('/api/admin/seo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          auth: { username: 'admin', password: 'accessometti' },
-          category: catId,
-          data: data
-        })
-      });
-    } catch (err) {
-      console.error('Error saving SEO:', err);
-    } finally {
-      setIsSavingSeo(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{show: boolean, id: string, name: string} | null>(null);
+
+  const confirmDelete = (id: string, name: string) => {
+    setDeleteConfirm({ show: true, id, name });
+  };
+
+  const handleToggleSource = (id: string) => {
+    const updated = newsSources.map(s => 
+      s.id === id ? { ...s, active: s.active === false ? true : false } : s
+    );
+    setNewsSources(updated);
+    saveSources(updated);
+  };
+
+  useEffect(() => {
+    if (showAdminDashboard) fetchAdminData();
+  }, [showAdminDashboard]);
+
+  const filteredNews = news.filter(item => {
+    const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         item.source.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    // Se è selezionato il filtro preferiti, mostriamo solo i preferiti indipendentemente dalla categoria selezionata prima
+    if (selectedCategory === 'favorites') {
+      return matchesSearch && favorites.includes(item.id);
+    }
+    
+    const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
+
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const lastItemRef = useCallback((node: HTMLDivElement | null) => {
+    if (loading) return;
+    if (observerRef.current) observerRef.current.disconnect();
+    
+    const mainElement = document.querySelector('main');
+    
+    observerRef.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && visibleCount < filteredNews.length) {
+        // Load next batch slightly before reaching the absolute end
+        setVisibleCount(prev => Math.min(prev + 10, filteredNews.length));
+      }
+    }, {
+      root: mainElement,
+      rootMargin: '400px', // Trigger when within 400px of the viewport
+      threshold: 0.1
+    });
+    
+    if (node) observerRef.current.observe(node);
+  }, [loading, visibleCount, filteredNews.length]);
+
+  const closeOverlays = () => {
+    setIsMenuOpen(false);
+    setIsSettingsOpen(false);
+    setIsSearchOpen(false);
+  };
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'GamesPulse News',
+          text: 'Check out the latest gaming news on GamesPulse!',
+          url: window.location.href,
+        });
+      } catch (err) {
+        console.error('Error sharing:', err);
+      }
+    } else {
+      // Fallback: Copy to clipboard
+      navigator.clipboard.writeText(window.location.href);
+      alert('Link copied to clipboard!');
     }
   };
 
-  // Reset to home view after login/logout
-  useEffect(() => {
-    setSelectedCategory('all');
-    setShowFavoritesOnly(false);
-    setIsMenuOpen(false);
-    setCurrentIndex(0);
-    setSearchQuery('');
-    setIsCategoryMenuOpen(false);
-    setIsFlipped(false);
-  }, [user]);
-
-  // Auth Listener
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
-      setUser(authUser);
-      if (authUser) {
-        // Create user doc if not exists
-        const userRef = doc(db, 'users', authUser.uid);
-        try {
-          const userSnap = await getDoc(userRef);
-          if (!userSnap.exists()) {
-            await setDoc(userRef, {
-              uid: authUser.uid,
-              email: authUser.email,
-              displayName: authUser.displayName,
-              photoURL: authUser.photoURL,
-              role: 'user'
-            });
-          }
-        } catch (err) {
-          console.error("Error setting up user doc:", err);
-        }
+  const handleSend = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'GamesPulse News',
+          text: 'Ehi, guarda questa app di notizie sui videogiochi!',
+          url: window.location.href,
+        });
+      } catch (err) {
+        console.error('Error sharing:', err);
       }
-    });
-    return () => unsubscribe();
+    } else {
+      // Fallback: Copy to clipboard
+      navigator.clipboard.writeText(window.location.href);
+      alert('Link copiato negli appunti!');
+    }
+  };
+
+  const SETTINGS_ITEMS = [
+    { 
+      id: 'profile', 
+      label: user ? user.displayName || 'Profilo' : 'Accedi', 
+      icon: user ? (
+        <img src={user.photoURL || ''} className="w-5 h-5 rounded-full" referrerPolicy="no-referrer" />
+      ) : <User size={20} />, 
+      action: user ? () => {} : signInWithGoogle 
+    },
+    { 
+      id: 'privacy', 
+      label: 'Info & Privacy', 
+      icon: <Info size={20} />, 
+      action: () => {
+        setIsInfoOpen(true);
+        setIsMenuOpen(false);
+        setIsSettingsOpen(false);
+      } 
+    },
+    { id: 'share', label: 'Condividi', icon: <Share2 size={20} />, action: handleShare },
+    { id: 'send', label: 'Invia ad un amico', icon: <Send size={20} />, action: handleSend },
+    { id: 'refresh', label: 'Aggiorna', icon: <RefreshCw size={20} />, action: () => fetchNews(true) },
+    user ? { id: 'logout', label: 'Esci', icon: <LogOut size={20} />, action: logout } : null
+  ].filter(Boolean) as any[];
+
+  const fetchNews = async (force = false) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/news${force ? '?refresh=true' : ''}`);
+      const data = await response.json();
+      
+      if (!Array.isArray(data)) {
+        console.error('Invalid news data format:', data);
+        setNews([]);
+        return;
+      }
+      
+      const categorizedData = data.map((item: NewsItem) => ({
+        ...item,
+        category: getCategory(item)
+      }));
+      setNews(categorizedData);
+    } catch (error) {
+      console.error('Error fetching news:', error);
+    } finally {
+      setLoading(false);
+      setNewsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchNews();
   }, []);
 
-  // Favorites Listener & Expiration Check
+  // Scroll to top when category or search changes
   useEffect(() => {
-    if (!user) {
-      setFavorites({});
-      return;
+    setVisibleCount(10);
+    setCurrentIndex(0);
+    const mainElement = document.querySelector('main');
+    if (mainElement) {
+      mainElement.scrollTo({ top: 0, behavior: 'smooth' });
     }
+  }, [selectedCategory, searchQuery]);
 
-    const q = query(collection(db, 'favorites'), where('userId', '==', user.uid));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const favs: Record<string, any> = {};
-      const now = Timestamp.now();
-      
-      snapshot.docs.forEach(async (docSnap) => {
-        const data = docSnap.data();
-        // Check expiration (24 hours)
-        if (data.expiresAt && data.expiresAt.toMillis() < now.toMillis()) {
-          try {
-            await deleteDoc(doc(db, 'favorites', docSnap.id));
-          } catch (err) {
-            handleFirestoreError(err, OperationType.DELETE, `favorites/${docSnap.id}`);
-          }
-        } else {
-          favs[data.newsId] = { ...data, id: docSnap.id };
-        }
-      });
-      setFavorites(favs);
-    }, (err) => {
-      handleFirestoreError(err, OperationType.LIST, 'favorites');
-    });
-
-    return () => unsubscribe();
-  }, [user]);
-
-  // Fetch Real News Feeds using the new backend proxy for optimal image/video extraction
-  // Fetch Real News Feeds using the dynamic sources from Admin Panel
-  const fetchSingleFeed = async (source: any) => {
-    try {
-      const response = await fetch(`/api/news?url=${encodeURIComponent(source.url)}&category=${encodeURIComponent(source.cat)}&source=${encodeURIComponent(source.name)}`);
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const items = await response.json();
-      return items as NewsItem[];
-    } catch (e) {
-      console.error(`Error fetching feed ${source.name}:`, e);
-      return [];
+  const handleScroll = (e: React.UIEvent<HTMLElement>) => {
+    const target = e.currentTarget;
+    const index = Math.round(target.scrollTop / target.clientHeight);
+    if (index !== currentIndex && index >= 0 && index < filteredNews.length) {
+      setCurrentIndex(index);
     }
+    if (isMenuOpen || isSearchOpen) closeOverlays();
   };
 
-  const fetchAllFeeds = async () => {
-    // Attempt to load from cache
-    const cachedNews = localStorage.getItem('cachedNews');
-    if (cachedNews && newsItems.length === 0) {
-      try {
-        const parsedCache = JSON.parse(cachedNews);
-        if (parsedCache && parsedCache.length > 0) {
-          setNewsItems(parsedCache);
-          setLoading(false);
-        }
-      } catch (e) { }
-    } else {
-    setLoading(true);
-    // Safety check: if we have NO sources at all, use local FEEDS immediately to satisfy user
-    if (newsSources.length === 0) {
-      setNewsSources(FEEDS as any[]);
-      // Continue execution with local feeds immediately
-    }
-
-    try {
-      const activeSources = newsSources.length > 0 ? newsSources : FEEDS;
-      
-        // 1. Uniform Initial Loading: Load the FIRST feed from EACH category initially
-        // to ensure the initial "all" view is assorted and random
-        const categoriesToLoad = CATEGORIES.filter(c => c.id !== 'all');
-        const firstFeeds = categoriesToLoad.map(cat => 
-          activeSources.filter((f: any) => f.cat === cat.label).sort(() => Math.random() - 0.5)[0]
-        ).filter(Boolean);
-        
-        // Add some strictly random ones too
-        const randomBatch = activeSources.sort(() => Math.random() - 0.5).slice(0, 5);
-        const combinedInitial = [...new Set([...firstFeeds, ...randomBatch])];
-          
-        const processFeed = async (source: any) => {
-          if (source.active === false) return; // Skip inactive sources
-          try {
-            const items = await fetchSingleFeed(source);
-            if (items.length > 0) {
-              setNewsItems(prev => {
-                const existingIds = new Set(prev.map(item => item.id));
-                const newItems = items.filter(item => !existingIds.has(item.id));
-                if (newItems.length > 0) {
-                   // Time-shifted Shuffle: Sort by date but inject noise
-                   // This keeps news roughly chronological but mixes them up beautifully
-                   const combined = [...prev, ...newItems];
-                   return combined.sort((a, b) => {
-                     const aMod = a.timestamp + (Math.random() - 0.5) * 3.6e6; // 1 hour variance
-                     const bMod = b.timestamp + (Math.random() - 0.5) * 3.6e6;
-                     return bMod - aMod;
-                   });
-                }
-                return prev;
-              });
-            }
-          } catch (e) {
-            console.error(`Process feed failed for ${source.name}:`, e);
-          }
-        };
-
-        // Load initial assorted batch
-        await Promise.all(combinedInitial.map(processFeed));
-        setLoading(false); 
-
-        // Load the rest in background with staggered delays
-        const loadedUrls = new Set(combinedInitial.map(f => f.url));
-        const remainingFeeds = activeSources.filter(s => !loadedUrls.has(s.url) && s.active !== false); // Filter active
-        remainingFeeds.forEach((source, idx) => {
-          setTimeout(() => processFeed(source), 2000 + (idx * 1500));
-        });
-      } catch (e) {
-        console.error("Fetch all feeds failed:", e);
-        setLoading(false);
-      }
-    }
-  };
-
-  useEffect(() => {
-    if (newsSources.length > 0) {
-      fetchAllFeeds();
-    }
-  }, [newsSources]);
-
-  // Sync first 50 news items to localStorage for instant startup next time
-  useEffect(() => {
-    if (newsItems.length > 0) {
-      setTimeout(() => {
-        try {
-          localStorage.setItem('cachedNews', JSON.stringify(newsItems.slice(0, 50)));
-        } catch (e) { }
-      }, 1000);
-    }
-  }, [newsItems]);
-
-  useEffect(() => {
-    if (selectedCategory !== 'all' && !showFavoritesOnly && newsSources.length > 0) {
-      const catNews = newsItems.filter(item => 
-        item.category.toLowerCase().includes(selectedCategory.toLowerCase()) ||
-        selectedCategory.toLowerCase().includes(item.category.toLowerCase())
-      );
-      if (catNews.length < 5) {
-        const sources = newsSources.filter(f => 
-          f.cat.toLowerCase().includes(selectedCategory.toLowerCase()) ||
-          selectedCategory.toLowerCase().includes(f.cat.toLowerCase())
-        );
-        sources.forEach(async (source) => {
-          const items = await fetchSingleFeed(source);
-          setNewsItems(prev => {
-            const existingIds = new Set(prev.map(item => item.id));
-            const newItems = items.filter(item => !existingIds.has(item.id));
-            const combined = [...prev, ...newItems];
-            return combined.sort((a, b) => {
-               const aMod = a.timestamp + (Math.random() - 0.5) * 7.2e6; // 2 hour variance for category deep dives
-               const bMod = b.timestamp + (Math.random() - 0.5) * 7.2e6;
-               return bMod - aMod;
-            });
-          });
-        });
-      }
-    }
-  }, [selectedCategory, showFavoritesOnly, newsSources]);
-
-  const toggleFavorite = async (news: NewsItem) => {
-    if (!user) {
-      loginWithGoogle();
-      return;
-    }
-
-    const favId = `${user.uid}_${news.id}`;
-    if (favorites[news.id]) {
-      try {
-        await deleteDoc(doc(db, 'favorites', favId));
-      } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, `favorites/${favId}`);
-      }
-    } else {
-      const now = Timestamp.now();
-      const expiresAt = new Timestamp(now.seconds + 24 * 60 * 60, now.nanoseconds);
-      try {
-        await setDoc(doc(db, 'favorites', favId), {
-          userId: user.uid,
-          newsId: news.id,
-          title: news.title,
-          summary: news.summary,
-          category: news.category,
-          imageUrl: news.imageUrl,
-          url: news.url,
-          source: news.source,
-          createdAt: now,
-          expiresAt: expiresAt
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.WRITE, `favorites/${favId}`);
-      }
-    }
-  };
-
-  const paginate = (newDirection: number) => {
-    const nextIndex = currentIndex + newDirection;
-    if (nextIndex >= 0 && nextIndex < feedWithAds.length) {
-      setDirection(newDirection);
-      setCurrentIndex(nextIndex);
-      setIsFlipped(false);
-    }
-  };
-
-  const displayedNews = useMemo(() => {
-    let base = showFavoritesOnly 
-      ? Object.values(favorites).map((f: any) => ({ ...f, id: f.newsId })).sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)) 
-      : newsItems;
-
-    return base.filter(item => {
-      // If showing favorites from the HEART menu, we ignore category unless specifically searching
-      const category = item.category || 'Generale';
-      const matchesCategory = showFavoritesOnly || selectedCategory === 'all' || 
-        category.toLowerCase().includes(selectedCategory.toLowerCase()) || 
-        selectedCategory.toLowerCase().includes(category.toLowerCase());
-      
-      const matchesSearch = !searchQuery || 
-        (item.title && item.title.toLowerCase().includes(searchQuery.toLowerCase())) || 
-        (item.summary && item.summary.toLowerCase().includes(searchQuery.toLowerCase()));
-
-      return matchesCategory && matchesSearch;
-    });
-  }, [showFavoritesOnly, favorites, newsItems, selectedCategory, searchQuery]);
-  // Build virtual feed: insert ad slots every 5-8 news items
-  const feedWithAds = useMemo(() => {
-    // If monetization is disabled, just return news
-    if (!adsenseConfig.enabled) {
-      return displayedNews.map(item => ({ type: 'news' as const, data: item, id: item.id }));
-    }
-
-    const result: ({ type: 'news', data: NewsItem, id: string } | { type: 'ad', id: string })[] = [];
-    const adFrequency = 6; // One ad every 6 news items
-    
-    displayedNews.forEach((item, index) => {
-      result.push({ type: 'news', data: item, id: item.id });
-      if ((index + 1) % adFrequency === 0 && (index + 1) < displayedNews.length) {
-        result.push({ type: 'ad', id: `ad-${index}` });
-      }
-    });
-    return result;
-  }, [displayedNews, adsenseConfig.enabled]);
-
-  const currentItem = feedWithAds[currentIndex];
+  const currentItem = filteredNews[currentIndex];
+  const isCurrentFavorite = currentItem ? favorites.includes(currentItem.id) : false;
 
   return (
-    <div className="h-svh w-full bg-black overflow-hidden relative flex items-center justify-center font-montserrat text-slate-200">
-      <AnimatePresence>
-        {showSplash && (
-          <motion.div
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 1, ease: "easeInOut" }}
-            className="fixed inset-0 z-[200] flex flex-col items-center justify-center overflow-hidden"
-          >
-            {/* Random Background */}
-            <motion.div 
-              initial={{ scale: 1.1 }}
-              animate={{ scale: 1 }}
-              transition={{ duration: 5, ease: "linear" }}
-              className="absolute inset-0 z-0"
-            >
-              <img 
-                src={splashBg} 
-                alt="Splash Background" 
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-            </motion.div>
-
-            {/* Content */}
-            <div className="relative z-10 flex flex-col items-center text-center">
-              <motion.p 
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.5, duration: 0.8 }}
-                className="text-white/60 uppercase tracking-[0.4em] text-xs font-bold mb-6"
-              >
-                Benvenuti in
-              </motion.p>
-              
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 0.8, duration: 1, ease: [0.16, 1, 0.3, 1] }}
-                className="relative"
-              >
-                {/* Logo Placeholder - User should upload their logo as /logo.png */}
-                <img 
-                  src="/logocompletook.png" 
-                  alt="SpotSmart Logo" 
-                  className="w-72 md:w-96 h-auto drop-shadow-[0_0_50px_rgba(255,255,255,0.4)]"
-                  referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    // Fallback if image fails
-                    (e.target as HTMLImageElement).src = "https://picsum.photos/seed/logo/400/200?blur=2";
-                  }}
-                />
-              </motion.div>
-
-              <motion.div 
-                initial={{ width: 0 }}
-                animate={{ width: 100 }}
-                transition={{ delay: 1.2, duration: 1.5, ease: "easeInOut" }}
-                className="h-[1px] bg-white/20 mt-12 mb-4"
-              />
-              
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 2, duration: 0.5 }}
-                className="text-white/30 text-[10px] uppercase tracking-widest"
-              >
-                Caricamento notizie intelligenti...
-              </motion.p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <motion.main 
-        initial={{ opacity: 0 }}
-        animate={{ 
-          opacity: 1,
-          scale: isMenuOpen ? 0.96 : 1
-        }}
-        transition={{ 
-          duration: 0.4,
-          ease: [0.16, 1, 0.3, 1] // Custom quintic ease-out
-        }}
-        className="relative z-10 w-full h-full flex items-center"
-      >
-        <div className="relative w-full h-full group" ref={containerRef}>
-          {/* Backdrop Blur Overlay when Menu is Open */}
-          <AnimatePresence>
-            {isMenuOpen && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => {
-                  setIsMenuOpen(false);
-                  setIsCategoryMenuOpen(false);
+    <div className="flex flex-col h-screen bg-black text-white overflow-hidden relative">
+      {/* Header - Integrated Top Bar */}
+      <header className="fixed top-0 left-0 right-0 z-40 bg-black/5 backdrop-blur-xl border-b border-white/10 px-6 py-4">
+        <div className="max-w-5xl mx-auto flex justify-between items-center">
+          <div>
+            <h1 className="text-xl md:text-2xl font-extrabold font-display tracking-tighter neon-text-blue italic drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">
+              GAMES<span className="animate-pulse-azure ml-1">PULSE</span>
+            </h1>
+            <p className="text-[8px] font-bold tracking-[0.15em] text-zinc-500 uppercase -mt-0.5 ml-0.5 opacity-80">
+              Your Daily Gaming Intel
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Active Category Indicator (Left of Refresh) */}
+            {selectedCategory !== 'all' && !isMenuOpen && (
+              <motion.button
+                initial={{ opacity: 0, x: 20, scale: 0.5 }}
+                animate={{ 
+                  opacity: 1, 
+                  x: 0,
+                  scale: 1,
+                  boxShadow: `0 0 20px ${CATEGORIES.find(c => c.id === selectedCategory)?.color}`
                 }}
-                className="absolute inset-0 bg-black/40 z-[95]"
-              />
+                onClick={() => setSelectedCategory('all')}
+                className="w-8 h-8 rounded-xl text-white flex items-center justify-center border-2 z-50 active:scale-90 transition-transform"
+                style={{ 
+                  backgroundColor: CATEGORIES.find(c => c.id === selectedCategory)?.color,
+                  borderColor: '#fff'
+                }}
+              >
+                {CATEGORIES.find(c => c.id === selectedCategory)?.icon}
+              </motion.button>
             )}
-          </AnimatePresence>
+            
+            <div className="flex items-center gap-2 md:gap-3">
+              <button 
+                onClick={() => currentItem && toggleFavorite(currentItem.id)}
+                className={`p-2 transition-all active:scale-90 ${isCurrentFavorite ? 'text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'text-white/70 hover:text-white'}`}
+              >
+                <Heart size={20} fill={isCurrentFavorite ? 'currentColor' : 'none'} />
+              </button>
+              <button 
+                onClick={() => setIsSearchOpen(!isSearchOpen)}
+                className={`p-2 transition-all active:scale-90 ${isSearchOpen ? 'text-neon-blue drop-shadow-[0_0_8px_rgba(0,243,255,0.5)]' : 'text-white/70 hover:text-white'}`}
+              >
+                <Search size={20} />
+              </button>
+              <button 
+                onClick={() => {
+                  setIsMenuOpen(!isMenuOpen);
+                }}
+                className={`p-2 transition-all active:scale-90 ${
+                  isMenuOpen 
+                    ? 'bg-gradient-to-br from-azure via-cyan-400 to-blue-600 text-white rounded-xl shadow-[0_0_15px_rgba(0,243,255,0.4)]' 
+                    : 'text-white/70 hover:text-white'
+                }`}
+              >
+                {isMenuOpen ? <X size={22} /> : <Gamepad2 size={22} />}
+              </button>
+            </div>
+          </div>
+        </div>
 
-          {/* Fixed Buttons at Bottom Right */}
-          <div className="absolute bottom-[30px] right-10 z-[100] flex items-center gap-4">
-            <AnimatePresence>
-              {!isMenuOpen && (
-                <div className="flex items-center gap-3">
-                  {/* Admin Shield Trigger */}
-                  <motion.button 
-                    initial={{ opacity: 0, x: 20, scale: 0.5 }}
-                    animate={{ opacity: 1, x: 0, scale: 1 }}
-                    exit={{ opacity: 0, x: 20, scale: 0.5 }}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => isAdminLoggedIn ? setShowAdminDashboard(true) : setShowAdminLogin(true)}
-                    className="w-12 h-12 rounded-full bg-slate-900/40 backdrop-blur-md border border-white/10 flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-slate-800/60 hover:border-white/20 transition-all active:scale-95 group/admin shadow-lg"
-                    title="Admin SEO"
-                  >
-                    <Shield className={`w-5 h-5 transition-colors ${isAdminLoggedIn ? 'text-indigo-400' : 'text-white/40'}`} />
-                    <div className="absolute right-full mr-4 px-3 py-1 bg-black/80 backdrop-blur-md text-[10px] text-white/60 rounded-lg opacity-0 group-hover/admin:opacity-100 pointer-events-none transition-opacity whitespace-nowrap uppercase tracking-widest border border-white/5 font-bold">
-                      Admin SEO
-                    </div>
-                  </motion.button>
+        {/* Search Bar (Animated Reveal) */}
+        <AnimatePresence>
+          {isSearchOpen && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0, marginTop: 0 }}
+              animate={{ height: 'auto', opacity: 1, marginTop: 12 }}
+              exit={{ height: 0, opacity: 0, marginTop: 0 }}
+              className="relative pointer-events-auto overflow-hidden"
+            >
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={14} />
+              <input 
+                type="text"
+                placeholder="Search intel..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
+                className="w-full bg-black/60 backdrop-blur-xl border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-xs focus:outline-none focus:border-neon-blue/50 transition-colors text-white"
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-                  <motion.button
-                    initial={{ opacity: 0, x: 20, scale: 0.5 }}
-                    animate={{ opacity: 1, x: 0, scale: 1 }}
-                    exit={{ opacity: 0, x: 20, scale: 0.5 }}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => {
-                      if (displayedNews[currentIndex]) {
-                        setIsFlipped(true); // Trigger flip to show iframe
-                      }
-                    }}
-                    className="w-12 h-12 rounded-full bg-white/5 backdrop-blur-md border border-white/5 text-white/50 flex items-center justify-center shadow-lg hover:bg-white/10 hover:text-white transition-all"
-                  >
-                    <ExternalLink className="w-5 h-5" />
-                  </motion.button>
-                </div>
-              )}
-            </AnimatePresence>
-            <div className="relative">
+        {/* Dropdown Menu (Categories + Settings) */}
+        <AnimatePresence>
+          {isMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 50 }}
+              className="fixed top-24 right-6 z-50 flex flex-col gap-4 items-end pointer-events-auto"
+            >
+              {/* Settings Toggle Button inside Main Menu */}
+              <motion.button
+                initial={{ opacity: 0, scale: 0.5, x: 20 }}
+                animate={{ opacity: 1, scale: 1, x: 0 }}
+                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all border-2 backdrop-blur-xl bg-black/60 ${isSettingsOpen ? 'text-neon-blue border-neon-blue shadow-[0_0_20px_rgba(0,243,255,0.4)]' : 'text-zinc-400 border-white/10'}`}
+              >
+                <Settings size={22} />
+              </motion.button>
+
+              {/* Settings Sub-Menu (Horizontal to the left of the button) */}
               <AnimatePresence>
-                {isMenuOpen && (
+                {isSettingsOpen && (
                   <motion.div
-                    variants={{
-                      hidden: { opacity: 0 },
-                      show: {
-                        opacity: 1,
-                        transition: {
-                          staggerChildren: 0.08,
-                          delayChildren: 0.05,
-                          ease: [0.16, 1, 0.3, 1]
-                        }
-                      },
-                      exit: {
-                        opacity: 0,
-                        transition: {
-                          staggerChildren: 0.04,
-                          staggerDirection: -1
-                        }
-                      }
-                    }}
-                    initial="hidden"
-                    animate="show"
-                    exit="exit"
-                    className="absolute bottom-full right-0 mb-6 flex flex-col gap-4"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    className="absolute top-0 right-16 flex flex-row-reverse gap-3 items-center"
                   >
-                    {[
-                      { 
-                        icon: LayoutGrid, 
-                        label: 'Categorie', 
-                        action: () => setIsCategoryMenuOpen(!isCategoryMenuOpen)
-                      },
-                      { 
-                        icon: Heart, 
-                        label: showFavoritesOnly ? 'Tutte' : 'Preferiti', 
-                        isActive: showFavoritesOnly,
-                        action: () => {
-                          const nextVal = !showFavoritesOnly;
-                          setShowFavoritesOnly(nextVal);
-                          if (nextVal) {
-                            setSelectedCategory('all');
-                            setCurrentIndex(0);
-                            setSearchQuery('');
-                          }
-                        }
-                      },
-                      { 
-                        icon: Send, 
-                        label: 'Invia App', 
-                        action: () => {
-                          if (navigator.share) {
-                            navigator.share({
-                              title: 'SpotSmart',
-                              text: 'Leggi le ultime notizie su SpotSmart!',
-                              url: 'https://spotsmart.it'
-                            }).catch(() => {});
-                          }
-                        }
-                      },
-                      { 
-                        icon: Share2, 
-                        label: 'Condividi', 
-                        action: () => {
-                          if (displayedNews[currentIndex]) {
-                            navigator.share?.({
-                              title: displayedNews[currentIndex].title,
-                              url: displayedNews[currentIndex].url
-                            }).catch(() => {});
-                          }
-                        } 
-                      },
-                      { 
-                        icon: RefreshCw, 
-                        label: 'Aggiorna', 
-                        action: fetchAllFeeds 
-                      },
-                      { 
-                        icon: Info, 
-                        label: 'Info & Privacy', 
-                        action: () => setIsInfoOpen(true)
-                      },
-                      { 
-                        icon: user ? LogOut : UserIcon, 
-                        label: user ? 'Logout' : 'Profilo', 
-                        isActive: !!user,
-                        action: user ? logout : loginWithGoogle 
-                      },
-                    ].map((item, i) => (
-                        <motion.div 
-                          key={i} 
-                          variants={{
-                            hidden: { opacity: 0, scale: 0.4, y: 40, x: 20, rotate: -20 },
-                            show: { 
-                              opacity: 1, 
-                              scale: 1, 
-                              y: 0,
-                              x: 0,
-                              rotate: 0,
-                              transition: { 
-                                type: "spring", 
-                                stiffness: 500, 
-                                damping: 30,
-                                mass: 0.5
-                              }
-                            },
-                            exit: { 
-                              opacity: 0, 
-                              scale: 0.4, 
-                              y: 20,
-                              transition: { duration: 0.2, ease: "easeIn" }
-                            }
-                          }}
-                          className="relative group flex justify-end"
+                    {SETTINGS_ITEMS.map((item, index) => (
+                      <motion.button
+                        key={item.id}
+                        initial={{ opacity: 0, scale: 0.5, x: 20 }}
+                        animate={{ 
+                          opacity: 1, 
+                          scale: 1, 
+                          x: 0,
+                          transition: { delay: index * 0.05 } 
+                        }}
+                        exit={{ opacity: 0, scale: 0.5, x: 20 }}
+                        onClick={() => {
+                          item.action();
+                          setIsSettingsOpen(false);
+                          setIsMenuOpen(false);
+                        }}
+                        className="relative group"
+                      >
+                        <div 
+                          className="w-10 h-10 rounded-lg flex items-center justify-center transition-all border-2 backdrop-blur-xl bg-black/60 text-zinc-400 border-white/10 group-hover:border-neon-blue group-hover:text-neon-blue group-hover:shadow-[0_0_20px_rgba(0,243,255,0.4)]"
                         >
-                        <motion.button
-                          whileHover={{ scale: 1.15, x: -5 }}
-                          whileTap={{ scale: 0.9 }}
-                          onClick={() => { item.action(); if (item.label !== 'Categorie') setIsMenuOpen(false); }}
-                          className={`w-12 h-12 rounded-full flex items-center justify-center backdrop-blur-xl border border-white/20 shadow-2xl transition-all relative ${
-                             (item.isActive) 
-                               ? (item.label.includes('Preferiti') || item.label.includes('Tutte')) && showFavoritesOnly
-                                 ? 'bg-red-600 border-red-500 text-white shadow-[0_0_20px_rgba(220,38,38,0.5)]'
-                                 : 'bg-indigo-500/40 border-indigo-400/50 text-white' 
-                               : (item.label === 'Categorie' && isCategoryMenuOpen)
-                                 ? `bg-indigo-500/40 border-indigo-400/50 text-white`
-                                 : 'bg-white/10 text-white/80 hover:bg-white/20 hover:text-white'
-                         } ${isCategoryMenuOpen && item.label !== 'Categorie' ? 'opacity-20 pointer-events-none' : 'opacity-100'}`}
-                        >
-                          <motion.div layoutId={item.isActive ? "active-menu-icon" : undefined}>
-                             <item.icon className={`w-5 h-5 ${item.isActive ? (item.label.includes('Preferiti') || item.label.includes('Tutte')) ? 'fill-white' : 'fill-current' : ''}`} />
-                          </motion.div>
-                          <span className="absolute right-full mr-4 px-3 py-1 text-white text-[10px] font-bold uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
-                            {item.label}
-                          </span>
-                        </motion.button>
-
-                        {item.label === 'Categorie' && (
-                          <AnimatePresence>
-                            {isCategoryMenuOpen && (
-                              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-                                   {CATEGORIES.map((cat, ci, arr) => {
-                                   const startAngle = (Math.PI * 1.05); 
-                                   const endAngle = (Math.PI * 0.5); 
-                                   const angle = startAngle + ((endAngle - startAngle) * (ci / (arr.length - 1)));
-                                   const radius = 220;
-                                   const x = Math.cos(angle) * radius;
-                                   const y = Math.sin(angle) * radius;
-                                   
-                                   return (
-                                     <motion.button
-                                       key={cat.id}
-                                       initial={{ x: 0, y: 0, opacity: 0, scale: 0 }}
-                                       animate={{ x, y, opacity: 1, scale: 1 }}
-                                       exit={{ x: 0, y: 0, opacity: 0, scale: 0 }}
-                                       transition={{ 
-                                         delay: ci * 0.04, 
-                                         type: 'spring', 
-                                         stiffness: 280, 
-                                         damping: 28,
-                                         mass: 0.6
-                                       }}
-                                       onClick={(e) => {
-                                         e.stopPropagation();
-                                         setSelectedCategory(cat.id);
-                                         setIsCategoryMenuOpen(false);
-                                         setIsMenuOpen(false);
-                                         setCurrentIndex(0);
-                                       }}
-                                       className={`absolute pointer-events-auto w-[52px] h-[52px] rounded-full flex items-center justify-center backdrop-blur-xl border border-white/20 shadow-xl transition-all group/cat ${
-                                         selectedCategory === cat.id 
-                                           ? `${cat.color} text-white` 
-                                           : 'bg-white/20 text-white/80 hover:bg-white/30 hover:text-white'
-                                       }`}
-                                       style={{ left: '50%', top: '50%', marginLeft: '-26px', marginTop: '-26px' }}
-                                     >
-                                      <motion.div layoutId={selectedCategory === cat.id ? "active-cat-icon" : undefined}>
-                                        <cat.icon className="w-[18px] h-[18px]" />
-                                      </motion.div>
-                                      <span className="absolute bottom-full mb-2 px-2 py-1 text-white text-[9px] font-bold uppercase tracking-wider opacity-0 group-hover/cat:opacity-100 transition-opacity pointer-events-none whitespace-nowrap bg-black/40 backdrop-blur-sm rounded-md border border-white/10">
-                                        {cat.label}
-                                      </span>
-                                    </motion.button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </AnimatePresence>
-                        )}
-                        </motion.div>
+                          {item.icon}
+                        </div>
+                        <span className="absolute -bottom-6 right-0 text-[8px] font-bold tracking-widest uppercase text-white/40 group-hover:text-neon-blue transition-colors opacity-0 group-hover:opacity-100 whitespace-nowrap">
+                          {item.label}
+                        </span>
+                      </motion.button>
                     ))}
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              <AnimatePresence>
-                {isMenuOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, x: 20, scale: 0.5 }}
-                    animate={{ opacity: 1, x: -70, scale: 1 }}
-                    exit={{ opacity: 0, x: 20, scale: 0.5 }}
-                    className="absolute top-1/2 -translate-y-1/2 right-0 flex items-center"
-                  >
-                    {isSearchOpen ? (
-                      <motion.div 
-                        layoutId="search-bubble"
-                        initial={{ width: 48, opacity: 0 }}
-                        animate={{ width: 260, opacity: 1 }}
-                        exit={{ width: 48, opacity: 0 }}
-                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                        className="h-12 bg-white/10 backdrop-blur-xl border border-white/20 rounded-full flex items-center px-4 shadow-[0_0_20px_rgba(255,255,255,0.1)] overflow-hidden"
-                      >
-                        <Search className="w-5 h-5 text-white/60 mr-2 shrink-0" />
-                        <input
-                          ref={searchInputRef}
-                          type="text"
-                          value={searchQuery}
-                          onChange={(e) => {
-                            setSearchQuery(e.target.value);
-                            setCurrentIndex(0);
-                          }}
-                          placeholder="Cerca articoli..."
-                          className="bg-transparent border-none outline-none text-white text-sm w-full placeholder:text-white/40"
-                          onBlur={() => {
-                            if (!searchQuery) setIsSearchOpen(false);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') setIsMenuOpen(false);
-                            if (e.key === 'Escape') {
-                              setIsSearchOpen(false);
-                              setSearchQuery('');
-                            }
-                          }}
-                        />
-                        {searchQuery && (
-                          <button 
-                            onClick={() => {
-                              setSearchQuery('');
-                              searchInputRef.current?.focus();
-                            }}
-                            className="ml-2 text-white/40 hover:text-white transition-colors"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        )}
-                      </motion.div>
-                    ) : (
-                      <motion.button
-                        layoutId="search-bubble"
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => {
-                          setIsSearchOpen(true);
-                          setTimeout(() => searchInputRef.current?.focus(), 100);
-                        }}
-                        className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-md border border-white/10 text-white flex items-center justify-center shadow-lg"
-                      >
-                        <Search className="w-5 h-5" />
-                      </motion.button>
-                    )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <AnimatePresence>
-                {selectedCategory !== 'all' && !isMenuOpen && (
-                  <motion.button
-                    initial={{ opacity: 0, y: 20, scale: 0.5 }}
-                    animate={{ opacity: 1, y: -65, scale: 1 }}
-                    exit={{ opacity: 0, y: 20, scale: 0.5 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => {
+              {CATEGORIES.map((cat, index) => (
+                <motion.button
+                  key={cat.id}
+                  initial={{ opacity: 0, scale: 0.5, x: 20 }}
+                  animate={{ 
+                    opacity: 1, 
+                    scale: 1, 
+                    x: 0,
+                    transition: { delay: index * 0.05 } 
+                  }}
+                  exit={{ opacity: 0, scale: 0.5, x: 20 }}
+                  onClick={() => {
+                    if (selectedCategory === cat.id) {
                       setSelectedCategory('all');
-                      setCurrentIndex(0);
-                    }}
-                    className={`absolute bottom-0 right-1 w-12 h-12 rounded-full text-white flex items-center justify-center shadow-lg border z-[90] group/sel-cat ${selectedCategoryData?.color || 'bg-indigo-600'} ${selectedCategoryData?.border || 'border-indigo-400/30'}`}
+                    } else {
+                      setSelectedCategory(cat.id);
+                    }
+                    setIsMenuOpen(false);
+                    setIsSettingsOpen(false);
+                  }}
+                  className="relative group flex items-center gap-3"
+                >
+                  <span className="text-[10px] font-bold tracking-widest uppercase text-white/40 group-hover:text-white transition-colors opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all">
+                    {cat.label}
+                  </span>
+                  <div 
+                    className={`relative w-12 h-12 rounded-xl flex items-center justify-center transition-all border-2 backdrop-blur-xl ${
+                      selectedCategory === cat.id 
+                        ? 'text-white' 
+                        : 'bg-black/60 text-zinc-400 border-white/10 group-hover:border-white/30'
+                    }`}
+                    style={selectedCategory === cat.id ? {
+                      backgroundColor: cat.color,
+                      borderColor: '#fff',
+                      boxShadow: `0 0 25px ${cat.color}`
+                    } : {}}
                   >
-                    <motion.div layoutId="active-cat-icon">
-                      {SelectedCategoryIcon && <SelectedCategoryIcon className="w-5 h-5" />}
-                    </motion.div>
-                    <span className="absolute right-full mr-4 px-3 py-1 text-white text-[10px] font-bold uppercase tracking-wider opacity-0 group-hover/sel-cat:opacity-100 transition-opacity pointer-events-none whitespace-nowrap drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
-                      {selectedCategoryData?.label}
-                    </span>
-                  </motion.button>
-                )}
-              </AnimatePresence>
+                    {cat.id === 'favorites' ? (
+                      <Heart 
+                        size={20} 
+                        fill={selectedCategory === 'favorites' ? 'white' : 'none'} 
+                        className={selectedCategory === 'favorites' ? 'text-white' : ''} 
+                      />
+                    ) : cat.icon}
+                  </div>
+                </motion.button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </header>
 
-
-
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                animate={{ rotate: isMenuOpen ? -60 : 0 }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                onClick={() => {
-                  setIsMenuOpen(!isMenuOpen);
-                  if (isMenuOpen) {
-                    setIsCategoryMenuOpen(false);
-                    setIsSearchOpen(false);
-                  }
-                }}
-                className={`w-14 h-14 rounded-full flex items-center justify-center border transition-all shadow-2xl backdrop-blur-md z-[100] p-0 overflow-hidden ${isMenuOpen ? 'bg-white/20 border-white/40' : 'bg-white/5 border-white/10 hover:bg-white/10 opacity-90 hover:opacity-100'}`}
+      {/* Main Content (Full Page Swipe) */}
+      <main 
+        ref={scrollRef}
+        className="absolute inset-0 overflow-y-auto snap-y snap-mandatory hide-scrollbar h-full w-full z-0"
+        onScroll={handleScroll}
+      >
+        {(showSplash || (loading && filteredNews.length === 0)) ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black overflow-hidden font-header z-[100]">
+            <motion.div 
+              className="absolute inset-0 bg-cover bg-center brightness-[0.1] blur-xl scale-110"
+              style={{ backgroundImage: `url(${splashBg})` }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            />
+            <div className="relative z-10 flex flex-col items-center gap-10">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.8 }}
+                className="flex flex-col items-center gap-6"
               >
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={isMenuOpen ? 'close' : 'menu'}
-                    initial={{ opacity: 0, scale: 0.5 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.5 }}
-                    transition={{ duration: 0.2 }}
-                    className="w-full h-full flex items-center justify-center"
-                  >
-                    {isMenuOpen ? (
-                      <X className="w-6 h-6 text-white" />
-                    ) : (
-                      <img src="/logo.png" className="w-10 h-10 object-contain" alt="Logo" />
-                    )}
-                  </motion.div>
-                </AnimatePresence>
-              <AnimatePresence>
-                {!isMenuOpen && (
-                  <motion.button
-                    initial={{ opacity: 0, y: 20, scale: 0.5 }}
-                    animate={{ opacity: 1, y: -125, scale: 1 }}
-                    exit={{ opacity: 0, y: 20, scale: 0.5 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => {
-                      if (!user) {
-                        loginWithGoogle();
-                        return;
-                      }
-                      if (currentItem) {
-                        toggleFavorite(currentItem as NewsItem);
-                      }
-                    }}
-                    className={`absolute bottom-0 right-1 w-12 h-12 rounded-full flex items-center justify-center shadow-lg border z-[90] transition-all ${
-                      currentItem && favorites[currentItem.id]
-                        ? 'bg-pink-600 border-pink-400/30 text-white' 
-                        : 'bg-white/10 border-white/10 text-white/60 hover:text-white hover:bg-white/20'
-                    } ${!user ? 'opacity-40 grayscale-[0.5]' : 'opacity-100'}`}
-                  >
-                    <motion.div layoutId="active-fav-icon">
-                      <Heart className={`w-5 h-5 ${currentItem && favorites[currentItem.id] ? 'fill-white' : ''}`} />
-                    </motion.div>
-                  </motion.button>
-                )}
-              </AnimatePresence>
-              </motion.button>
-            </div>
-          </div>
-
-          <div className="relative w-full h-full overflow-hidden flex flex-col bg-black">
-            <div className="flex-1 relative overflow-hidden">
-              {(loading || (displayedNews.length === 0 && !showFavoritesOnly)) ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black z-50">
-                  <motion.img
-                    src="/logocompletook.png"
-                    animate={{ 
-                      scale: [1, 1.05, 1],
-                      opacity: [0.6, 1, 0.6]
-                    }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                    className="w-48 md:w-64 h-auto drop-shadow-[0_0_30px_rgba(255,255,255,0.2)] mb-8"
-                  />
-                  <p className="text-white/40 font-bold uppercase tracking-widest text-xs animate-pulse">Caricamento Notizie...</p>
+                <img 
+                  src="/logocompleto.png" 
+                  alt="GamesPulse Logo" 
+                  className="w-72 md:w-96 drop-shadow-[0_0_30px_rgba(0,194,255,0.3)]"
+                />
+                <div className="flex flex-col items-center gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full bg-neon-blue animate-pulse"></div>
+                    <span className="text-neon-blue font-bold uppercase tracking-[0.4em] text-[12px]">caricamento notizie</span>
+                    <div className="w-2 h-2 rounded-full bg-neon-blue animate-pulse [animation-delay:0.2s]"></div>
+                  </div>
+                  <div className="w-48 h-[1px] bg-gradient-to-r from-transparent via-neon-blue/30 to-transparent mt-2"></div>
                 </div>
-              ) : (
-                <AnimatePresence initial={false} custom={direction} mode="popLayout">
-                {currentItem ? (
-                  currentItem.type === 'ad' ? (
-                    <AdCard
-                      key={currentItem.id}
-                      direction={direction}
-                      variants={variants}
-                      onNext={() => {
-                        const next = Math.min(currentIndex + 1, feedWithAds.length - 1);
-                        setDirection(1);
-                        setCurrentIndex(next);
-                        setIsFlipped(false);
-                      }}
-                    />
-                  ) : (
-                    <NewsCard
-                      key={currentItem.data.id}
-                      currentItem={currentItem.data}
-                      direction={direction}
-                      displayedNews={feedWithAds.filter((f: any) => f.type === 'news').map((f: any) => f.data)}
-                      currentIndex={feedWithAds.filter((f: any, i: number) => f.type === 'news' && i <= currentIndex).length - 1}
-                      setCurrentIndex={(ni: number) => {
-                        // Map news index back to feed index
-                        let newsCount = 0;
-                        for (let i = 0; i < feedWithAds.length; i++) {
-                          if (feedWithAds[i].type === 'news') {
-                            if (newsCount === ni) { setCurrentIndex(i); break; }
-                            newsCount++;
-                          }
-                        }
-                      }}
-                      setDirection={setDirection}
-                      favorites={favorites}
-                      toggleFavorite={toggleFavorite}
-                      user={user}
-                      selectedCategoryData={selectedCategoryData}
-                      variants={variants}
-                      isFlipped={isFlipped}
-                      setIsFlipped={setIsFlipped}
-                    />
-                  )
-                ) : (
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    className="absolute inset-0 flex flex-col items-center justify-center text-white/40 gap-6 p-8 text-center"
-                  >
-                    <div className="w-24 h-24 rounded-full bg-white/5 flex items-center justify-center border border-white/10 mb-2">
-                    </div>
-                    <div className="space-y-2">
-                      <h3 className="text-2xl font-black text-white uppercase tracking-tighter">Nessun preferito</h3>
-                    </div>
-                    <button 
-                      onClick={() => setShowFavoritesOnly(false)}
-                      className="px-8 py-3 rounded-full bg-white/10 border border-white/20 text-white font-bold uppercase text-xs tracking-[0.2em] hover:bg-white/20 transition-all active:scale-95"
-                    >
-                      Esplora Notizie
-                    </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              )}
+              </motion.div>
             </div>
           </div>
-        </div>
-      </motion.main>
-
-      <style dangerouslySetInnerHTML={{ __html: `
-        .perspective-1000 {
-          perspective: 1000px;
-        }
-        .preserve-3d {
-          transform-style: preserve-3d;
-        }
-        .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-        }
-        .scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-      `}} />
+        ) : (
+          <div className="h-full">
+            {filteredNews.length > 0 ? (
+              <>
+                {filteredNews.slice(0, visibleCount).map((item, index) => (
+                  <React.Fragment key={item.id}>
+                    <div 
+                      ref={index === visibleCount - 1 ? lastItemRef : null}
+                      className="h-full w-full snap-start flex-shrink-0 perspective-1000 relative"
+                    >
+                      <NewsCard 
+                        item={item} 
+                        index={index} 
+                        onInteraction={closeOverlays}
+                        isFavorite={favorites.includes(item.id)}
+                        onToggleFavorite={() => toggleFavorite(item.id)}
+                      />
+                      {/* Instruction Text */}
+                      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+                        <p className="text-[10px] font-bold tracking-[0.2em] text-zinc-600 uppercase whitespace-nowrap">
+                          Premi l'immagine per vedere il sito
+                        </p>
+                      </div>
+                    </div>
+                    {/* Inject AdCard every 6 items if enabled */}
+                    {(index + 1) % 6 === 0 && adsenseConfig.enabled && (
+                      <div className="h-full w-full snap-start flex-shrink-0 flex items-center justify-center p-6 md:p-12">
+                        <AdCard 
+                          id={`inline-ad-${index}`}
+                          onNext={() => {
+                            const container = scrollRef.current;
+                            if (container) {
+                              container.scrollBy({ top: container.clientHeight, behavior: 'smooth' });
+                            }
+                          }} 
+                        />
+                      </div>
+                    )}
+                  </React.Fragment>
+                ))}
+                {visibleCount < filteredNews.length && (
+                  <div className="h-32 w-full flex flex-col items-center justify-center snap-start bg-black/50 backdrop-blur-sm border-t border-white/5">
+                    <div className="w-8 h-8 border-2 border-neon-blue border-t-transparent rounded-full animate-spin mb-3 shadow-[0_0_15px_rgba(0,243,255,0.3)]"></div>
+                    <p className="text-[10px] font-bold tracking-[0.3em] text-neon-blue/60 uppercase animate-pulse">Loading more intel...</p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-zinc-500 gap-4">
+                <Gamepad2 size={48} className="opacity-20" />
+                <p className="text-sm font-bold tracking-widest">
+                  {selectedCategory === 'favorites' ? 'NO FAVORITES SAVED' : 'NO INTEL FOUND'}
+                </p>
+                <button 
+                  onClick={() => setSelectedCategory('all')}
+                  className="text-xs text-neon-blue underline"
+                >
+                  {selectedCategory === 'favorites' ? 'Browse all news' : 'Clear filters'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </main>
 
       {/* Info Modal */}
       <AnimatePresence>
@@ -1778,14 +1088,14 @@ export default function App() {
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
-              className="w-full max-w-2xl max-h-[85vh] bg-slate-900/90 border border-white/10 rounded-3xl overflow-hidden shadow-2xl flex flex-col"
+              className="w-full max-w-2xl max-h-[85vh] bg-zinc-950 border border-white/10 rounded-3xl overflow-hidden shadow-2xl flex flex-col"
             >
-              <div className="p-6 md:p-8 flex items-center justify-between border-b border-white/5">
+              <div className="p-6 md:p-8 flex items-center justify-between border-b border-white/5 bg-zinc-900/50">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
-                    <Info className="w-5 h-5 text-indigo-400" />
+                  <div className="w-10 h-10 rounded-xl bg-neon-blue/20 flex items-center justify-center">
+                    <Info className="w-5 h-5 text-neon-blue" />
                   </div>
-                  <h3 className="text-xl font-bold text-white">Info & Privacy</h3>
+                  <h3 className="text-xl font-bold text-white uppercase tracking-tighter">Info & Privacy</h3>
                 </div>
                 <button 
                   onClick={() => setIsInfoOpen(false)}
@@ -1795,24 +1105,24 @@ export default function App() {
                 </button>
               </div>
               
-              <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 scrollbar-hide focus-visible:outline-none">
+              <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 scroll-smooth focus-visible:outline-none bg-zinc-950 no-scrollbar">
                 <section>
-                  <h4 className="text-indigo-400 font-bold uppercase text-xs tracking-widest mb-4">Informazioni Legali</h4>
-                  <div className="space-y-4 text-white/60 text-sm leading-relaxed">
+                  <h4 className="text-neon-blue font-bold uppercase text-[10px] tracking-widest mb-4 opacity-80">Informazioni Legali</h4>
+                  <div className="space-y-4 text-white/60 text-sm leading-relaxed font-medium">
                     <p>
-                      <strong>SpotSmart</strong> (spotsmart.it) è un'applicazione ideata e progettata da <strong>Castro Massimo</strong>, responsabile del trattamento e della conservazione dei dati personali.
+                      <strong className="text-white">GamesPulse</strong> è un'applicazione ideata e progettata da <strong className="text-white">Castro Massimo</strong>, responsabile del trattamento e della conservazione dei dati personali.
                     </p>
                     <p>
-                      Email di contatto: <a href="mailto:castromassimo@gmail.com" className="text-indigo-400 hover:underline">castromassimo@gmail.com</a>
+                      Email di contatto: <a href="mailto:castromassimo@gmail.com" className="text-neon-blue hover:underline">castromassimo@gmail.com</a>
                     </p>
                   </div>
                 </section>
 
                 <section>
-                  <h4 className="text-indigo-400 font-bold uppercase text-xs tracking-widest mb-4">GDPR & Privacy</h4>
-                  <div className="space-y-4 text-white/60 text-sm leading-relaxed">
+                  <h4 className="text-neon-blue font-bold uppercase text-[10px] tracking-widest mb-4 opacity-80">GDPR & Privacy</h4>
+                  <div className="space-y-4 text-white/60 text-sm leading-relaxed font-medium">
                     <p>
-                      I dati degli utenti (preferiti e profili) sono conservati esclusivamente presso i server protetti di <strong>Firebase (Google Cloud)</strong> nel pieno rispetto delle normative vigenti.
+                      I dati degli utenti (preferiti e profili) sono conservati esclusivamente presso i server protetti di <strong className="text-white">Firebase (Google Cloud)</strong> nel pieno rispetto delle normative vigenti.
                     </p>
                     <p>
                       Il periodo di conservazione dei dati è limitato al tempo strettamente necessario per l'erogazione del servizio o come previsto dalle norme di legge sulla conservazione dei dati digitali.
@@ -1824,779 +1134,592 @@ export default function App() {
                 </section>
 
                 <section>
-                  <h4 className="text-indigo-400 font-bold uppercase text-xs tracking-widest mb-4">Cookie Policy</h4>
-                  <div className="space-y-4 text-white/60 text-sm leading-relaxed">
+                  <h4 className="text-neon-blue font-bold uppercase text-[10px] tracking-widest mb-4 opacity-80">Cookie Policy</h4>
+                  <div className="space-y-4 text-white/60 text-sm leading-relaxed font-medium">
                     <p>
                       Utilizziamo esclusivamente cookie tecnici necessari al corretto funzionamento dell'app e alla memorizzazione delle tue preferenze di sessione.
                     </p>
                   </div>
                 </section>
 
-                <section className="pt-6 border-t border-white/5">
-                  <h4 className="text-indigo-400 font-bold uppercase text-xs tracking-widest mb-6">Altre App Consigliate</h4>
+                <section className="pt-4 border-t border-white/5">
+                  <h4 className="text-neon-blue font-bold uppercase text-[10px] tracking-widest mb-6 opacity-80">Altre App Consigliate</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <a 
-                      href="https://www.gamespulse.it" 
+                      href="https://www.spotsmart.it" 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="group relative bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center gap-4 transition-all hover:bg-white/10 hover:border-indigo-500/30 active:scale-95"
+                      className="group relative bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center gap-4 transition-all hover:bg-white/10 hover:border-neon-blue/30 active:scale-95"
                     >
-                      <div className="w-12 h-12 rounded-xl bg-black/40 overflow-hidden flex items-center justify-center p-1 border border-white/5 group-hover:border-indigo-500/20 transition-colors">
-                        <img src="/gamespulse.png" alt="GamesPulse" className="w-full h-full object-contain" />
+                      <div className="w-12 h-12 rounded-xl bg-black/40 overflow-hidden flex items-center justify-center p-1 border border-white/5 group-hover:border-neon-blue/20 transition-colors">
+                        <img src="/spotsmart.png" alt="SpotSmart" className="w-full h-full object-contain drop-shadow-lg" />
                       </div>
                       <div className="flex-1">
-                        <h5 className="text-sm font-bold text-white group-hover:text-indigo-400 transition-colors uppercase tracking-tight">GamesPulse</h5>
-                        <p className="text-[10px] text-white/40 font-medium">Daily Gaming Intel</p>
+                        <h5 className="text-sm font-bold text-white group-hover:text-neon-blue transition-colors uppercase tracking-tight">SpotSmart IT</h5>
+                        <p className="text-[10px] text-white/40 font-medium">News & Lifestyle Intel</p>
                       </div>
-                      <ExternalLink className="w-4 h-4 text-white/20 group-hover:text-indigo-400 transition-colors" />
+                      <ExternalLink className="w-4 h-4 text-white/20 group-hover:text-neon-blue transition-colors" />
                     </a>
                   </div>
                 </section>
               </div>
 
-              <div className="p-6 bg-white/5 text-center">
-                <p className="text-[10px] text-white/20 uppercase tracking-[0.3em]">SpotSmart App © 2026 - Versione 1.0.0</p>
+              <div className="p-6 bg-zinc-900/50 text-center border-t border-white/5 relative">
+                <p className="text-[10px] text-white/20 uppercase tracking-[0.3em] font-bold">GamesPulse App © 2026 - Versione 1.0.0</p>
+                
+                {/* Admin Shield Icon */}
+                <button 
+                  onClick={() => {
+                    setIsInfoOpen(false);
+                    if (isAdminLoggedIn) setShowAdminDashboard(true);
+                    else setShowAdminLogin(true);
+                  }}
+                  className="mt-4 p-2 text-white/10 hover:text-neon-blue transition-colors"
+                >
+                  <Shield size={16} />
+                </button>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Cookie Banner */}
-      <AnimatePresence>
-        {showCookieBanner && (
-          <motion.div
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-6 left-6 right-6 md:left-auto md:right-10 md:w-96 z-[400]"
-          >
-            <div className="bg-slate-900/95 backdrop-blur-xl border border-white/10 p-5 rounded-2xl shadow-2xl flex flex-col gap-4">
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center shrink-0">
-                  <Globe className="w-5 h-5 text-indigo-400" />
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm text-white/80 font-medium leading-normal">
-                    Utilizziamo i cookie per migliorare la tua esperienza. <button onClick={() => {setIsInfoOpen(true); setIsMenuOpen(false);}} className="text-indigo-400 underline underline-offset-4 hover:text-indigo-300">Leggi di più</button>
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={() => {
-                    localStorage.setItem('cookieConsent', 'accepted');
-                    setShowCookieBanner(false);
-                  }}
-                  className="flex-1 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase tracking-widest transition-colors"
-                >
-                  Accetto
-                </button>
-                <button 
-                  onClick={() => {
-                    localStorage.setItem('cookieConsent', 'rejected');
-                    setShowCookieBanner(false);
-                  }}
-                  className="flex-1 px-4 py-2 bg-white/5 hover:bg-white/10 text-white/60 rounded-lg text-xs font-bold uppercase tracking-widest transition-colors"
-                >
-                  Rifiuto
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Admin Shield Trigger moved to actions area */}
-
       {/* Admin Login Modal */}
       <AnimatePresence>
         {showAdminLogin && (
           <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[600] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[500] bg-black/90 backdrop-blur-2xl flex items-center justify-center p-6"
           >
             <motion.div 
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="w-full max-w-sm bg-slate-900 border border-white/10 rounded-3xl p-8 shadow-2xl overflow-hidden relative"
+              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }}
+              className="w-full max-w-md bg-zinc-950 border border-white/10 rounded-[35px] p-10 shadow-[0_0_100px_rgba(0,243,255,0.1)]"
             >
-              <button 
-                onClick={() => setShowAdminLogin(false)}
-                className="absolute top-6 right-6 text-white/40 hover:text-white transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <div className="text-center mb-8">
-                <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 flex items-center justify-center mx-auto mb-4 border border-indigo-500/20">
-                  <Lock className="w-8 h-8 text-indigo-400" />
+              <div className="flex flex-col items-center mb-10">
+                <div className="w-20 h-20 rounded-3xl bg-neon-blue/10 flex items-center justify-center border border-neon-blue/20 mb-6 font-bold text-neon-blue">
+                  <Shield size={32} />
                 </div>
-                <h3 className="text-xl font-bold text-white uppercase tracking-tight">Accesso Admin</h3>
-                <p className="text-sm text-white/40 mt-1 uppercase tracking-widest text-[10px] font-bold">Gestione SEO & Metadata</p>
+                <h3 className="text-2xl font-black text-white uppercase tracking-tighter">Admin Access</h3>
+                <p className="text-[10px] text-white/30 uppercase tracking-[0.4em] mt-2">Restricted Area</p>
               </div>
 
-              <form onSubmit={handleAdminLogin} className="space-y-4">
+              <form onSubmit={handleAdminLogin} className="space-y-6">
                 <div>
-                  <label className="block text-[10px] text-white/40 uppercase tracking-widest font-bold mb-2 ml-1">Username</label>
+                  <label className="block text-[10px] text-white/30 uppercase tracking-widest font-black mb-3 ml-2">Username</label>
                   <input 
-                    type="text" 
-                    value={adminUsername}
-                    onChange={(e) => setAdminUsername(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500/50 transition-colors placeholder:text-white/10"
-                    placeholder="Admin"
-                    required
+                    type="text" value={adminUsername} onChange={e => setAdminUsername(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-sm text-white focus:outline-none focus:border-neon-blue/40"
+                    placeholder="Enter admin ID"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-white/40 uppercase tracking-widest font-bold mb-2 ml-1">Password</label>
+                  <label className="block text-[10px] text-white/30 uppercase tracking-widest font-black mb-3 ml-2">Password</label>
                   <input 
-                    type="password" 
-                    value={adminPassword}
-                    onChange={(e) => setAdminPassword(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500/50 transition-colors placeholder:text-white/10"
+                    type="password" value={adminPassword} onChange={e => setAdminPassword(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-sm text-white focus:outline-none focus:border-neon-blue/40"
                     placeholder="••••••••"
-                    required
                   />
                 </div>
-                {adminError && (
-                  <p className="text-red-400 text-[10px] font-bold uppercase tracking-wider text-center">{adminError}</p>
-                )}
-                <button 
-                  type="submit"
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl transition-all shadow-xl shadow-indigo-600/20 active:scale-95 uppercase tracking-widest text-xs mt-4"
-                >
-                  Accedi
-                </button>
+                {adminError && <p className="text-red-500 text-[10px] font-bold uppercase tracking-widest text-center">{adminError}</p>}
+                
+                <div className="flex gap-4 pt-4">
+                  <button type="submit" className="flex-1 bg-neon-blue text-black font-black py-5 rounded-2xl uppercase tracking-widest text-[11px] shadow-lg shadow-neon-blue/20 active:scale-95 transition-all">
+                    Sign In
+                  </button>
+                  <button type="button" onClick={() => setShowAdminLogin(false)} className="flex-1 bg-white/5 text-white/40 font-black py-5 rounded-2xl border border-white/10 uppercase tracking-widest text-[11px] hover:bg-white/10 transition-all">
+                    Cancel
+                  </button>
+                </div>
               </form>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Admin Dashboard Modal */}
+      {/* Admin Dashboard */}
       <AnimatePresence>
         {showAdminDashboard && (
           <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[600] bg-black flex flex-col items-stretch h-full overflow-hidden"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[600] bg-zinc-950 flex flex-col items-center justify-center p-6 overflow-hidden"
           >
-            <div className="flex flex-col sm:flex-row h-full">
+            <div className="w-full h-full max-w-6xl bg-zinc-900/50 border border-white/10 rounded-[40px] flex overflow-hidden shadow-2xl">
               {/* Sidebar */}
-              <div className="w-full sm:w-80 bg-slate-950 border-r border-white/10 flex flex-col shrink-0">
-                <div className="p-8 border-b border-white/5 bg-slate-900/40">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 border border-indigo-500/20">
-                      <Shield className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h2 className="text-base font-black text-white uppercase tracking-tight">SpotSmart Panel</h2>
-                      <p className="text-[10px] text-white/40 uppercase tracking-[0.2em] font-black mt-0.5">Control Center</p>
-                    </div>
+              <div className="w-72 bg-black/40 border-r border-white/5 flex flex-col p-8">
+                <div className="flex items-center gap-3 mb-16">
+                  <div className="w-10 h-10 rounded-xl bg-neon-blue text-black flex items-center justify-center font-black">GP</div>
+                  <div>
+                    <h2 className="text-sm font-black text-white tracking-widest">DASHBOARD</h2>
+                    <p className="text-[9px] text-white/20 uppercase font-bold">Admin Management</p>
                   </div>
                 </div>
-                
-                <nav className="flex-1 overflow-y-auto p-4 py-8 space-y-2">
-                  <button 
-                    onClick={() => setAdminTab('seo')}
-                    className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all group ${adminTab === 'seo' ? 'bg-indigo-600/10 text-white border border-indigo-500/20 shadow-[0_0_20px_rgba(79,70,229,0.1)]' : 'text-white/40 hover:text-white hover:bg-white/5 border border-transparent'}`}
-                  >
-                    <Activity className={`w-5 h-5 transition-colors ${adminTab === 'seo' ? 'text-indigo-400' : 'text-white/40'}`} />
-                    <span className="text-xs font-black uppercase tracking-widest">SEO & Metadata</span>
-                    <ChevronRight className={`ml-auto w-4 h-4 transition-transform ${adminTab === 'seo' ? 'rotate-90 opacity-100' : 'opacity-0'}`} />
-                  </button>
 
-                  <button 
-                    onClick={() => setAdminTab('sources')}
-                    className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all group ${adminTab === 'sources' ? 'bg-emerald-600/10 text-white border border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.1)]' : 'text-white/40 hover:text-white hover:bg-white/5 border border-transparent'}`}
-                  >
-                    <Database className={`w-5 h-5 transition-colors ${adminTab === 'sources' ? 'text-emerald-400' : 'text-white/40'}`} />
-                    <span className="text-xs font-black uppercase tracking-widest">Fonti News RSS</span>
-                  </button>
+                <div className="flex-1 space-y-4">
+                  {[
+                    { id: 'seo', label: 'SEO & Metadata', icon: Search },
+                    { id: 'sources', label: 'Fonti RSS', icon: Database },
+                    { id: 'adsense', label: 'AdSense Pub', icon: Globe },
+                    { id: 'analytics', label: 'Traffico', icon: Activity }
+                  ].map(tab => (
+                    <button 
+                      key={tab.id} onClick={() => setAdminTab(tab.id)}
+                      className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${adminTab === tab.id ? 'bg-neon-blue text-black shadow-lg shadow-neon-blue/20' : 'text-white/40 hover:bg-white/5'}`}
+                    >
+                      <tab.icon size={18} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">{tab.label}</span>
+                    </button>
+                  ))}
+                </div>
 
-                  <button 
-                    onClick={() => setAdminTab('analytics')}
-                    className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all group ${adminTab === 'analytics' ? 'bg-amber-600/10 text-white border border-amber-500/20 shadow-[0_0_20px_rgba(245,158,11,0.1)]' : 'text-white/40 hover:text-white hover:bg-white/5 border border-transparent'}`}
-                  >
-                    <BarChart3 className={`w-5 h-5 transition-colors ${adminTab === 'analytics' ? 'text-amber-400' : 'text-white/40'}`} />
-                    <span className="text-xs font-black uppercase tracking-widest">Analytics & Traffico</span>
-                  </button>
-
-                  <button 
-                    onClick={() => setAdminTab('adsense')}
-                    className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all group ${adminTab === 'adsense' ? 'bg-indigo-600/10 text-white border border-indigo-500/20 shadow-[0_0_20px_rgba(79,70,229,0.1)]' : 'text-white/40 hover:text-white hover:bg-white/5 border border-transparent'}`}
-                  >
-                    <Cpu className={`w-5 h-5 transition-colors ${adminTab === 'adsense' ? 'text-indigo-400' : 'text-white/40'}`} />
-                    <span className="text-xs font-black uppercase tracking-widest">Google AdSense</span>
-                  </button>
-                </nav>
-
-                <div className="p-6 border-t border-white/5 bg-slate-900/20">
-                  <button 
-                    onClick={() => { setIsAdminLoggedIn(false); setShowAdminDashboard(false); }}
-                    className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-all text-xs font-black uppercase tracking-widest"
-                  >
-                    <LogOut className="w-4 h-4" /> Esci Sessione
-                  </button>
+                <div className="pt-8 border-t border-white/5 space-y-3">
+                   <button 
+                     onClick={() => setShowAdminDashboard(false)}
+                     className="w-full py-4 text-[10px] font-black uppercase text-white/30 hover:text-white transition-colors"
+                   >
+                     Torna all'App
+                   </button>
+                   <button 
+                     onClick={() => { setIsAdminLoggedIn(false); setShowAdminDashboard(false); }}
+                     className="w-full py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500/20 transition-all"
+                   >
+                     Log Out
+                   </button>
                 </div>
               </div>
 
-              {/* Main Workspace */}
-              <div className="flex-1 overflow-y-auto bg-[#020617] p-6 md:p-12">
-                <div className="max-w-6xl mx-auto">
-                  
-                  {/* Tab: SEO & Metadata */}
-                  {adminTab === 'seo' && (
-                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-                      <header className="mb-16 pb-8 border-b border-white/5">
-                        <h1 className="text-4xl font-black text-white uppercase tracking-tighter">SEO Optimization</h1>
-                        <p className="text-white/40 mt-2 uppercase tracking-[0.3em] text-[10px] font-bold">Gestione schede metadati ed indicizzazione schede categorie</p>
-                      </header>
-
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        {CATEGORIES.map(cat => {
-                          const config = seoConfigs[cat.id] || { title: '', description: '', keywords: '', adsense: '' };
-                          return (
-                            <div key={cat.id} className="bg-slate-900/40 border border-white/5 rounded-3xl p-8 hover:border-indigo-500/20 transition-all">
-                              <div className="flex items-center gap-5 mb-10">
-                                <div className={`w-14 h-14 rounded-2xl ${cat.color} bg-opacity-10 flex items-center justify-center text-white border border-white/5`}>
-                                  <cat.icon className="w-7 h-7" />
-                                </div>
-                                <div>
-                                  <h3 className="text-xl font-black text-white uppercase tracking-tighter">{cat.label}</h3>
-                                  <p className="text-[10px] text-white/30 uppercase tracking-widest font-black mt-1">/{cat.id}</p>
-                                </div>
-                              </div>
-                              <div className="space-y-6">
-                                <div>
-                                  <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-2">Meta Title</label>
-                                  <input 
-                                    type="text" 
-                                    value={config.title || ''} 
-                                    onChange={(e) => setSeoConfigs(prev => ({ ...prev, [cat.id]: { ...config, title: e.target.value }}))}
-                                    onBlur={(e) => saveSeoConfig(cat.id, { ...config, title: e.target.value })} 
-                                    className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-white focus:outline-none focus:border-indigo-500/30" 
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-2">Description</label>
-                                  <textarea 
-                                    rows={2} 
-                                    value={config.description || ''} 
-                                    onChange={(e) => setSeoConfigs(prev => ({ ...prev, [cat.id]: { ...config, description: e.target.value }}))}
-                                    onBlur={(e) => saveSeoConfig(cat.id, { ...config, description: e.target.value })} 
-                                    className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-white focus:outline-none focus:border-indigo-500/30 resize-none" 
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-2">Keywords</label>
-                                  <input 
-                                    type="text" 
-                                    value={config.keywords || ''} 
-                                    onChange={(e) => setSeoConfigs(prev => ({ ...prev, [cat.id]: { ...config, keywords: e.target.value }}))}
-                                    onBlur={(e) => saveSeoConfig(cat.id, { ...config, keywords: e.target.value })} 
-                                    className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-indigo-400 focus:outline-none focus:border-indigo-500/30" 
-                                    placeholder="keyword1, keyword2..."
-                                  />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                  <div>
-                                    <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-2">AdSense Script</label>
-                                    <input 
-                                      type="text" 
-                                      value={config.adsense || ''} 
-                                      onChange={(e) => setSeoConfigs(prev => ({ ...prev, [cat.id]: { ...config, adsense: e.target.value }}))}
-                                      onBlur={(e) => saveSeoConfig(cat.id, { ...config, adsense: e.target.value })} 
-                                      className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-[9px] font-mono text-indigo-300" 
-                                      placeholder="<script...>" 
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-2">Aggiornato</label>
-                                    <div className="h-[46px] flex items-center px-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl text-emerald-400 text-[10px] font-black uppercase tracking-widest">
-                                      {isSavingSeo ? "Salvataggio..." : "Live Sync OK"}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
+              {/* Content Area */}
+              <div className="flex-1 bg-black/40 overflow-y-auto p-12 custom-scrollbar">
+                {adminTab === 'seo' && (
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                    <header className="mb-12 border-b border-white/5 pb-8 flex justify-between items-end">
+                      <div>
+                        <h2 className="text-4xl font-black text-white uppercase tracking-tighter">SEO Optimization</h2>
+                        <p className="text-[10px] text-white/30 uppercase tracking-[0.4em] font-bold mt-2">Gestione Metadati per Categorie</p>
                       </div>
-                    </motion.div>
-                  )}
-
-                  {/* Tab: Sources RSS */}
-                  {adminTab === 'sources' && (
-                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-                      <header className="mb-12 pb-8 border-b border-white/5 flex items-center justify-between">
-                        <div>
-                          <h1 className="text-4xl font-black text-white uppercase tracking-tighter">Fonti Feed RSS</h1>
-                          <p className="text-white/40 mt-2 uppercase tracking-[0.3em] text-[10px] font-bold">Configurazione flussi di notizie nazionali ed internazionali</p>
-                        </div>
-                        <div className="bg-emerald-500/10 border border-emerald-500/20 px-6 py-3 rounded-2xl flex items-center gap-3">
-                          <Database className="w-4 h-4 text-emerald-400" />
-                          <span className="text-xs font-black text-white uppercase tracking-widest">{newsSources.length} Fonti Attive</span>
-                        </div>
-                      </header>
-
-                      {/* Add Source Form */}
-                      <div className="bg-slate-900/60 border border-white/10 rounded-3xl p-8 mb-12 shadow-2xl">
-                        <div className="flex items-center gap-4 mb-8">
-                          <Plus className="w-5 h-5 text-indigo-400" />
-                          <h3 className="text-sm font-black text-white uppercase tracking-widest">Integra Nuova Fonte</h3>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                          <div className="md:col-span-1">
-                            <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-3 ml-1">Testata / Nome</label>
-                            <input value={newSource.name} onChange={e => setNewSource({...newSource, name: e.target.value})} type="text" placeholder="Es. Reuters IT" className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-white focus:outline-none focus:border-indigo-500/30" />
-                          </div>
-                          <div className="md:col-span-2">
-                             <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-3 ml-1">URL XML/RSS Feed</label>
-                             <input value={newSource.url} onChange={e => setNewSource({...newSource, url: e.target.value})} type="url" placeholder="https://testata.it/rss.xml" className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-white focus:outline-none focus:border-indigo-500/30" />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-3 ml-1">Categoria</label>
-                            <select value={newSource.cat} onChange={e => setNewSource({...newSource, cat: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-white focus:outline-none focus:border-indigo-500/30 appearance-none">
-                              {CATEGORIES.filter(c => c.id !== 'all').map(c => <option key={c.id} value={c.label}>{c.label}</option>)}
-                            </select>
-                          </div>
-                        </div>
-                        <button onClick={addSource} className="mt-8 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-5 rounded-2xl transition-all uppercase tracking-widest text-[11px] shadow-xl shadow-indigo-600/20 active:scale-[0.98]">
-                          Aggiungi Fonte al Database
-                        </button>
+                      <div className="bg-neon-blue/10 border border-neon-blue/20 px-6 py-3 rounded-2xl flex items-center gap-3">
+                        <Database size={16} className="text-neon-blue" />
+                        <span className="text-[10px] font-black uppercase text-neon-blue">Database GP Sync</span>
                       </div>
+                    </header>
 
-                      {/* Sources List Grouped by Category */}
-                      <div className="space-y-12">
-                        {CATEGORIES.filter(c => c.id !== 'all').map(cat => {
-                          const catSources = newsSources.filter(s => s.cat === cat.label);
-                          if (catSources.length === 0) return null;
-                          return (
-                            <div key={cat.id} className="relative">
-                              <div className="flex items-center gap-4 mb-6">
-                                <div className={`w-8 h-8 rounded-lg ${cat.color} bg-opacity-10 border border-white/5 flex items-center justify-center text-white`}>
-                                  <cat.icon className="w-4 h-4" />
-                                </div>
-                                <h3 className="text-lg font-black text-white uppercase tracking-tighter">{cat.label}</h3>
-                                <div className="h-px bg-white/5 flex-1 ml-4" />
-                              </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                                {catSources.map(source => (
-                                  <div key={source.id} className="bg-slate-900/30 border border-white/5 rounded-2xl p-5 hover:bg-slate-900 transition-all group flex items-center justify-between">
-                                    <div className="flex items-center gap-4 flex-1 min-w-0 pr-4">
-                                      <button 
-                                        onClick={() => handleToggleSource(source.id)}
-                                        className={`relative w-10 h-6 rounded-full transition-all shrink-0 ${source.active !== false ? 'bg-indigo-500' : 'bg-white/10'}`}
-                                      >
-                                        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${source.active !== false ? 'right-1' : 'left-1'}`} />
-                                      </button>
-                                      <div className="truncate">
-                                        <p className={`font-bold text-sm truncate uppercase tracking-tight transition-opacity ${source.active !== false ? 'text-white' : 'text-white/20'}`}>{source.name}</p>
-                                        <p className="text-[10px] text-white/20 mt-1 truncate font-mono">{source.url}</p>
-                                      </div>
-                                    </div>
-                                    <button onClick={() => confirmDelete(source.id, source.name)} className="w-8 h-8 rounded-lg bg-red-500/10 text-red-500 opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500/20 flex items-center justify-center shrink-0">
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </motion.div>
-                  )}
-
-                  {/* Tab: Analytics */}
-                  {adminTab === 'analytics' && (
-                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-                      <header className="mb-16 pb-8 border-b border-white/5">
-                        <h1 className="text-4xl font-black text-white uppercase tracking-tighter">Analytics & Traffico</h1>
-                        <p className="text-white/40 mt-2 uppercase tracking-[0.3em] text-[10px] font-bold">Monitoraggio visibilità Google e configurazione tracking ID</p>
-                      </header>
-
-                      {/* Analisi Traffico Grafico */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                        <div className="bg-slate-900 border border-white/10 rounded-3xl p-8 hover:border-amber-500/30 transition-all group overflow-hidden relative">
-                          <div className="relative z-10">
-                            <header className="flex items-center justify-between mb-2">
-                              <span className="text-[10px] text-white/30 font-black uppercase tracking-widest">Traffico Totale</span>
-                              <Activity className="w-4 h-4 text-emerald-400 group-hover:scale-125 transition-transform" />
-                            </header>
-                            <p className="text-3xl font-black text-white tracking-tighter">
-                              {realTraffic.total >= 1000 ? `${(realTraffic.total / 1000).toFixed(1)}K` : realTraffic.total}
-                              <span className="text-[10px] text-emerald-400 align-top ml-2 uppercase font-black tracking-widest">+14%</span>
-                            </p>
-                          </div>
-                          <div className="absolute bottom-[-10px] left-0 right-0 h-12 flex items-end opacity-20 group-hover:opacity-40 transition-opacity px-2">
-                            {[4,8,6,3,9,11,8,4,12,6,10,14,12,10,8].map((v, i) => (
-                              <motion.div 
-                                key={i}
-                                initial={{ height: 0 }}
-                                animate={{ height: `${v * 4}px` }}
-                                transition={{ delay: i * 0.05 }}
-                                className="flex-1 bg-emerald-400 mx-0.5 rounded-t-sm"
-                              />
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="bg-slate-900 border border-white/10 rounded-3xl p-8 hover:border-amber-500/30 transition-all group overflow-hidden relative">
-                          <div className="relative z-10">
-                            <header className="flex items-center justify-between mb-2">
-                              <span className="text-[10px] text-white/30 font-black uppercase tracking-widest">Utenti Attivi</span>
-                              <Users className="w-4 h-4 text-amber-400 group-hover:scale-125 transition-transform" />
-                            </header>
-                            <p className="text-3xl font-black text-white tracking-tighter">
-                              {Math.max(0, Math.floor(realTraffic.today * 0.15) + (realTraffic.today > 0 ? 1 : 0))}
-                              <span className="text-[10px] text-white font-normal ml-2 tracking-widest uppercase">LIVE</span>
-                            </p>
-                          </div>
-                          <div className="absolute bottom-[-10px] left-0 right-0 h-10 flex items-center justify-center gap-1 opacity-20">
-                            <motion.div 
-                              animate={{ scale: [1, 1.5, 1] }} 
-                              transition={{ repeat: Infinity, duration: 2 }} 
-                              className="w-20 h-20 rounded-full border border-amber-500/40"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="bg-slate-900 border border-white/10 rounded-3xl p-8 hover:border-amber-500/30 transition-all group overflow-hidden relative">
-                          <div className="relative z-10">
-                            <header className="flex items-center justify-between mb-2">
-                              <span className="text-[10px] text-white/30 font-black uppercase tracking-widest">Tempo Medio</span>
-                              <Clock className="w-4 h-4 text-indigo-400 group-hover:scale-125 transition-transform" />
-                            </header>
-                            <p className="text-3xl font-black text-white tracking-tighter">
-                              {realTraffic.today > 50 ? '4:52' : realTraffic.today > 0 ? '1:24' : '0:00'}
-                              <span className="text-xs text-white/20 ml-2">min</span>
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="max-w-xl bg-slate-900 border border-white/10 rounded-3xl p-10 mb-12">
-                        <header className="flex items-center justify-between mb-10">
-                           <div className="flex items-center gap-4">
-                              <TrendingUp className="w-6 h-6 text-amber-400" />
-                              <h3 className="text-lg font-bold text-white uppercase tracking-tight">Attività Ultime 24h</h3>
-                           </div>
-                           <span className="text-[9px] text-white/20 font-black uppercase tracking-widest">Real-Time</span>
-                        </header>
-                        
-                        <div className="h-48 flex items-end gap-2 relative">
-                           {/* Griglia */}
-                           <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-5">
-                              {[1,2,3,4].map(v => <div key={v} className="border-t border-white w-full" />)}
-                           </div>                            {/* Barre animate */}
-                            {trafficData.map((h, i) => (
-                               <div key={i} className="flex-1 group relative">
-                                 <motion.div 
-                                   initial={{ height: 0 }}
-                                   animate={{ height: `${h}%` }}
-                                   transition={{ type: 'spring', damping: 20, stiffness: 100, delay: i * 0.02 }}
-                                   className="w-full bg-gradient-to-t from-amber-500/20 to-amber-500 rounded-t-lg group-hover:from-amber-400 group-hover:to-amber-300 transition-all shadow-[0_0_15px_rgba(245,158,11,0.1)]"
-                                 />
-                                 {/* Tooltip mock */}
-                                 <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-white text-black text-[9px] font-black px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none uppercase">
-                                   {Math.floor(h * 2.4)} visiti
-                                 </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                      {CATEGORIES.map(cat => {
+                        const config = seoConfigs[cat.id] || { title: '', description: '', keywords: '' };
+                        return (
+                          <div key={cat.id} className="bg-zinc-900/40 border border-white/5 rounded-[30px] p-8 hover:border-neon-blue/20 transition-all group">
+                            <div className="flex items-center gap-4 mb-8">
+                               <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white border border-white/10" style={{backgroundColor: `${cat.color}20`}}>
+                                  {cat.icon}
                                </div>
-                            ))}
-                        </div>
-                        <div className="flex justify-between mt-6 px-1">
-                           <span className="text-[9px] text-white/20 font-bold uppercase">00:00</span>
-                           <span className="text-[9px] text-white/20 font-bold uppercase italic">Most Peak</span>
-                           <span className="text-[9px] text-white/20 font-bold uppercase">23:59</span>
-                        </div>
-                      </div>
-
-                      <div className="max-w-xl bg-slate-900 border border-white/10 rounded-3xl p-10">
-                        <div className="flex items-center gap-4 mb-10">
-                          <BarChart3 className="w-6 h-6 text-amber-400" />
-                          <h3 className="text-lg font-bold text-white uppercase tracking-tight">Impostazioni Google Analytics 4</h3>
-                        </div>
-                        <div className="space-y-8">
-                          <div>
-                            <label className="block text-[10px] text-white/30 uppercase tracking-widest font-black mb-3">Measurement ID (G-XXXXXXXXXX)</label>
-                            <input 
-                              type="text" 
-                              value={analyticsConfig.trackingId}
-                              onChange={e => setAnalyticsConfig({...analyticsConfig, trackingId: e.target.value})}
-                              placeholder="G-..." 
-                              className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-5 text-white font-mono focus:outline-none focus:border-amber-500/30 transition-all" 
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[10px] text-white/30 uppercase tracking-widest font-black mb-3">Google Verification Tag (Search Console)</label>
-                            <textarea 
-                              rows={3}
-                              value={analyticsConfig.verificationTag}
-                              onChange={e => setAnalyticsConfig({...analyticsConfig, verificationTag: e.target.value})}
-                              placeholder='<meta name="google-site-verification" content="..." />' 
-                              className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-5 text-white font-mono text-[10px] focus:outline-none focus:border-amber-500/30 transition-all resize-none" 
-                            />
-                            <p className="text-[9px] text-white/20 mt-2 uppercase tracking-tight">Copia ed incolla l'intero tag meta fornito da Google Search Console</p>
-                          </div>
-                          
-                          <div className="flex items-center justify-between p-6 bg-white/5 rounded-2xl border border-white/5">
-                            <div>
-                               <p className="text-xs font-bold text-white uppercase tracking-widest">Stato Tracking</p>
-                               <p className="text-[10px] text-white/30 mt-1 uppercase">Attiva o disattiva il tracciamento lato server</p>
+                               <div>
+                                  <h3 className="text-lg font-black text-white uppercase tracking-tighter">{cat.label}</h3>
+                                  <p className="text-[9px] text-white/20 uppercase tracking-widest font-bold">/{cat.id} endpoint</p>
+                               </div>
                             </div>
-                            <button 
-                              onClick={() => setAnalyticsConfig({...analyticsConfig, enabled: !analyticsConfig.enabled})}
-                              className={`w-14 h-8 rounded-full transition-all relative ${analyticsConfig.enabled ? 'bg-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.5)]' : 'bg-white/10'}`}
-                            >
-                              <div className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow-lg transition-all ${analyticsConfig.enabled ? 'right-1' : 'left-1'}`} />
-                            </button>
+                            
+                            <div className="space-y-6">
+                               <div>
+                                  <label className="block text-[9px] text-white/20 uppercase tracking-widest font-black mb-3">Meta Title</label>
+                                  <input 
+                                    type="text" value={config.title} 
+                                    onChange={e => setSeoConfigs({...seoConfigs, [cat.id]: {...config, title: e.target.value}})}
+                                    onBlur={() => saveSeoConfig(cat.id, seoConfigs[cat.id])}
+                                    className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-white focus:outline-none focus:border-neon-blue/30"
+                                  />
+                               </div>
+                               <div>
+                                  <label className="block text-[9px] text-white/20 uppercase tracking-widest font-black mb-3">Meta Description</label>
+                                  <textarea 
+                                    rows={2} value={config.description}
+                                    onChange={e => setSeoConfigs({...seoConfigs, [cat.id]: {...config, description: e.target.value}})}
+                                    onBlur={() => saveSeoConfig(cat.id, seoConfigs[cat.id])}
+                                    className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-white focus:outline-none focus:border-neon-blue/30 resize-none"
+                                  />
+                               </div>
+                               <div>
+                                  <label className="block text-[9px] text-white/20 uppercase tracking-widest font-black mb-3">Keywords</label>
+                                  <input 
+                                    type="text" value={config.keywords}
+                                    onChange={e => setSeoConfigs({...seoConfigs, [cat.id]: {...config, keywords: e.target.value}})}
+                                    onBlur={() => saveSeoConfig(cat.id, seoConfigs[cat.id])}
+                                    className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-neon-blue/60 focus:outline-none focus:border-neon-blue/40"
+                                  />
+                               </div>
+                               <div className="flex items-center gap-2 pt-2">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                                  <span className="text-[8px] font-black uppercase tracking-widest text-emerald-500/60">Live Cloud Cache Sync Enabled</span>
+                               </div>
+                            </div>
                           </div>
-                          <button 
-                            onClick={() => saveAnalytics(analyticsConfig)}
-                            className="w-full bg-amber-600 hover:bg-amber-700 text-white font-black py-5 rounded-2xl shadow-xl shadow-amber-600/20 transition-all uppercase tracking-widest text-[11px]"
-                          >
-                            Aggiorna Configurazione Traffico
-                          </button>
-                          
-                          <div className="pt-6 border-t border-white/5">
-                             <button 
-                               onClick={resetServerTraffic}
-                               className="w-full bg-red-600/10 hover:bg-red-600/20 text-red-400 font-bold py-4 rounded-2xl border border-red-500/20 transition-all uppercase tracking-widest text-[9px]"
-                             >
-                               Reset Totale Dati Traffico (Solo Reali)
-                             </button>
-                             <p className="text-[9px] text-white/20 mt-3 text-center uppercase">Rimuove permanentemente i dati storici e azzera i contatori</p>
-                          </div>
-                        </div>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
 
-                        <div className="mt-12 p-6 rounded-2xl bg-amber-500/5 border border-amber-500/10 border-dashed">
-                          <p className="text-[10px] text-amber-400 uppercase tracking-widest font-black leading-relaxed">
-                            L'implementazione utilizza l'iniezione dinamica lato server per garantire che lo script sia presente nel primo pacchetto HTML inviato ai crawler di Google.
-                          </p>
-                        </div>
+                {adminTab === 'sources' && (
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                    <header className="mb-12 border-b border-white/5 pb-8 flex justify-between items-end">
+                      <div>
+                        <h2 className="text-4xl font-black text-white uppercase tracking-tighter">Fonti Feed RSS</h2>
+                        <p className="text-[10px] text-white/30 uppercase tracking-[0.4em] font-bold mt-2">Configurazione flussi di notizie nazionali ed internazionali</p>
                       </div>
-                    </motion.div>
-                  )}
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 px-6 py-3 rounded-2xl flex items-center gap-3">
+                        <Database size={16} className="text-emerald-400" />
+                        <span className="text-[10px] font-black uppercase text-white">{newsSources.length} Fonti Attive</span>
+                      </div>
+                    </header>
 
-                  {/* Tab: AdSense */}
-                  {adminTab === 'adsense' && (
-                    <motion.div
-                      key="adsense"
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="space-y-8"
-                    >
-                      {/* Monetization Dashboard */}
+                    {/* Add Source Form */}
+                    <div className="bg-zinc-900/60 border border-white/10 rounded-3xl p-8 mb-12">
+                      <div className="flex items-center gap-4 mb-8">
+                        <Plus className="w-5 h-5 text-neon-blue" />
+                        <h3 className="text-sm font-black text-white uppercase tracking-widest">Integra Nuova Fonte</h3>
+                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                        {[
-                          { label: 'Oggi (Est.)', value: `€${monetizationStats.today}`, color: 'text-emerald-400', icon: Activity },
-                          { label: 'Ieri', value: `€${monetizationStats.yesterday}`, color: 'text-white/60', icon: Clock },
-                          { label: 'Ultimi 30gg', value: `€${monetizationStats.month}`, color: 'text-indigo-400', icon: BarChart3 },
-                          { label: 'Click Ads', value: monetizationStats.clicks, color: 'text-amber-400', icon: TrendingUp },
-                        ].map((stat, i) => (
-                          <div key={i} className="bg-slate-900 border border-white/10 rounded-3xl p-6 flex items-center justify-between">
-                            <div>
-                              <p className="text-[10px] text-white/30 uppercase tracking-widest font-black mb-1">{stat.label}</p>
-                              <p className={`text-2xl font-black ${stat.color}`}>{stat.value}</p>
-                            </div>
-                            <stat.icon className={`w-8 h-8 ${stat.color} opacity-20`} />
-                          </div>
-                        ))}
+                        <div className="md:col-span-1">
+                          <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-3">Nome Testata</label>
+                          <input value={newSource.name} onChange={e => setNewSource({...newSource, name: e.target.value})} type="text" placeholder="Es. IGN IT" className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-white focus:outline-none focus:border-neon-blue/30" />
+                        </div>
+                        <div className="md:col-span-2">
+                           <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-3">URL RSS Feed</label>
+                           <input value={newSource.url} onChange={e => setNewSource({...newSource, url: e.target.value})} type="url" placeholder="https://testata.it/rss.xml" className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-white focus:outline-none focus:border-neon-blue/30" />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-white/20 uppercase tracking-widest font-black mb-3">Categoria</label>
+                          <select value={newSource.cat} onChange={e => setNewSource({...newSource, cat: e.target.value})} className="w-full bg-black/40 border border-white/5 rounded-xl px-5 py-4 text-xs text-white focus:outline-none focus:border-neon-blue/30 appearance-none">
+                            {CATEGORIES.filter(c => c.id !== 'favorites').map(c => <option key={c.id} value={c.label === 'Home' ? 'News' : c.label}>{c.label === 'Home' ? 'News Generali' : c.label}</option>)}
+                          </select>
+                        </div>
                       </div>
+                      <button onClick={addSource} className="mt-8 w-full bg-neon-blue text-black font-black py-5 rounded-2xl transition-all uppercase tracking-widest text-[11px] shadow-xl shadow-neon-blue/20 active:scale-95">
+                        Aggiungi Fonte al Database
+                      </button>
+                    </div>
 
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        <div className="bg-slate-900 border border-white/10 rounded-3xl p-10">
+                    <div className="space-y-12">
+                       {CATEGORIES.filter(c => c.id !== 'favorites').map(cat => {
+                        const targetCat = cat.label === 'Home' ? 'News' : cat.label;
+                        const catSources = newsSources.filter(s => s.cat === targetCat);
+                        if (catSources.length === 0 && cat.label !== 'Home') return null;
+                        
+                        // Prevent rendering totally empty section if News/Home is strictly empty
+                        if (catSources.length === 0) return null;
+
+                        return (
+                          <div key={cat.id}>
+                            <div className="flex items-center gap-4 mb-6">
+                              <h3 className="text-lg font-black text-white uppercase tracking-tighter">{cat.label === 'Home' ? 'News Generali' : cat.label}</h3>
+                              <div className="h-px bg-white/5 flex-1" />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                              {catSources.map(source => (
+                                <div key={source.id} className="bg-zinc-900/30 border border-white/5 rounded-2xl p-5 group flex justify-between items-center hover:bg-zinc-900/50 transition-all">
+                                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                                    <button 
+                                      onClick={() => handleToggleSource(source.id)}
+                                      className={`relative w-10 h-6 rounded-full transition-all shrink-0 ${source.active !== false ? 'bg-neon-blue' : 'bg-white/10'}`}
+                                    >
+                                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${source.active !== false ? 'right-1' : 'left-1'}`} />
+                                    </button>
+                                    <div className="truncate pr-4">
+                                      <p className={`font-bold text-sm truncate uppercase tracking-tight transition-opacity ${source.active !== false ? 'text-white' : 'text-white/20'}`}>{source.name}</p>
+                                      <p className="text-[10px] text-white/20 truncate font-mono mt-1">{source.url}</p>
+                                    </div>
+                                  </div>
+                                  <button onClick={() => confirmDelete(source.id, source.name)} className="p-3 text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100 shrink-0">
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                       })}
+                    </div>
+                  </motion.div>
+                )}
+
+                {adminTab === 'adsense' && (
+                  <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-8">
+                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <div className="bg-zinc-900 border border-white/10 rounded-[40px] p-10">
                           <header className="flex items-center gap-4 mb-10">
                              <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center">
                                <Settings className="w-6 h-6 text-indigo-400" />
                              </div>
                              <div>
                                <h3 className="text-xl font-bold text-white uppercase tracking-tight">Impostazioni Annunci</h3>
-                               <p className="text-xs text-white/40">Configura i tag di verifica e gli snippet</p>
+                               <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mt-1">Sincronizzazione Gaming Ads</p>
                              </div>
                           </header>
 
                           <div className="space-y-8">
-                             <div className="flex items-center justify-between p-6 bg-black/40 border border-white/5 rounded-2xl">
+                            <div className="flex items-center justify-between p-6 bg-black/40 border border-white/5 rounded-2xl">
                               <div>
                                 <p className="text-[10px] text-white/30 uppercase tracking-widest font-black mb-1">Stato Monetizzazione</p>
                                 <p className={`text-sm font-bold ${adsenseConfig.enabled ? 'text-emerald-400' : 'text-white/40'}`}>
-                                  {adsenseConfig.enabled ? 'SITO ATTIVO PER ADSENSE' : 'MONETIZZAZIONE DISATTIVATA'}
+                                  {adsenseConfig.enabled ? 'PIATTAFORMA ATTIVA' : 'SISTEMA DISABILITATO'}
                                 </p>
                               </div>
-                              <button
-                                onClick={() => setAdsenseConfig({...adsenseConfig, enabled: !adsenseConfig.enabled})}
-                                className={`relative w-14 h-8 rounded-full transition-all duration-500 overflow-hidden ${adsenseConfig.enabled ? 'bg-indigo-600' : 'bg-white/10'}`}
-                              >
-                                <div className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow-lg transition-all ${adsenseConfig.enabled ? 'right-1' : 'left-1'}`} />
+                              <button onClick={() => setAdsenseConfig({...adsenseConfig, enabled: !adsenseConfig.enabled})} className={`relative w-14 h-8 rounded-full transition-all duration-500 ${adsenseConfig.enabled ? 'bg-indigo-600' : 'bg-white/10'}`}>
+                                <div className={`absolute top-1 w-6 h-6 rounded-full bg-white transition-all ${adsenseConfig.enabled ? 'right-1' : 'left-1'}`} />
                               </button>
                             </div>
 
                             <div>
-                              <label className="block text-[10px] text-white/30 uppercase tracking-widest font-black mb-3">Snippet Codice AdSense (Head)</label>
-                              <textarea 
-                                rows={6}
-                                value={adsenseConfig.script}
-                                onChange={e => setAdsenseConfig({...adsenseConfig, script: e.target.value})}
-                                placeholder='<script async src="https://pagead2.googlesyndication.com/..."></script>' 
-                                className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-5 text-white font-mono text-[10px] focus:outline-none focus:border-indigo-500/30 transition-all resize-none" 
-                              />
+                              <label className="block text-[9px] text-white/30 uppercase tracking-widest font-black mb-3">Snippet Google AdSense (Head)</label>
+                              <textarea rows={6} value={adsenseConfig.script} onChange={e => setAdsenseConfig({...adsenseConfig, script: e.target.value})} placeholder="Incolla qui lo script di AdSense" className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-5 text-white font-mono text-[10px] focus:outline-none focus:border-indigo-500/30 resize-none" />
                             </div>
 
                             <div>
-                              <label className="block text-[10px] text-white/30 uppercase tracking-widest font-black mb-3">Meta Tag Verifica</label>
-                              <input 
-                                type="text"
-                                value={adsenseConfig.metaTag}
-                                onChange={e => setAdsenseConfig({...adsenseConfig, metaTag: e.target.value})}
-                                placeholder='<meta name="google-adsense-account" content="..." />' 
-                                className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-5 text-white font-mono text-[10px] focus:outline-none focus:border-indigo-500/30 transition-all" 
-                              />
+                              <label className="block text-[9px] text-white/30 uppercase tracking-widest font-black mb-3">Meta Tag Verifica</label>
+                              <input type="text" value={adsenseConfig.metaTag} onChange={e => setAdsenseConfig({...adsenseConfig, metaTag: e.target.value})} placeholder='<meta name="google-adsense-account" content="..." />' className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-5 text-white font-mono text-[10px] focus:outline-none focus:border-indigo-500/30" />
                             </div>
                           </div>
                         </div>
 
-                        <div className="bg-slate-900 border border-white/10 rounded-3xl p-10">
-                          <header className="flex items-center gap-4 mb-10">
-                             <FileText className="w-6 h-6 text-amber-400" />
-                             <h3 className="text-lg font-bold text-white uppercase tracking-tight">ads.txt Content</h3>
-                          </header>
-                          
-                          <div className="space-y-6">
-                            <p className="text-[10px] text-white/30 uppercase tracking-widest leading-relaxed">
-                              Inserisci qui le righe per il file ads.txt. Sarà servito automaticamente all'indirizzo spotsmart.it/ads.txt
-                            </p>
-                            <textarea 
-                              rows={10}
-                              value={adsenseConfig.adsTxt}
-                              onChange={e => setAdsenseConfig({...adsenseConfig, adsTxt: e.target.value})}
-                              placeholder="google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0" 
-                              className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-5 text-white font-mono text-[10px] focus:outline-none focus:border-amber-500/30 transition-all resize-none" 
-                            />
-                            
-                                 <button 
-                               onClick={() => saveAdSense(adsenseConfig)}
-                               disabled={isSavingAdsense}
-                               className={`w-full py-5 rounded-2xl shadow-xl transition-all uppercase tracking-widest text-[11px] font-black flex items-center justify-center gap-3 ${
-                                 isSavingAdsense 
-                                   ? 'bg-indigo-900 text-white/50 cursor-not-allowed' 
-                                   : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20 active:scale-[0.98]'
-                               }`}
-                             >
-                               {isSavingAdsense ? (
-                                 <>
-                                   <RefreshCw className="w-4 h-4 animate-spin" />
-                                   Salvataggio in corso...
-                                 </>
-                               ) : (
-                                 <>
-                                   <Save className="w-4 h-4" />
-                                   Salva Configurazione AdSense
-                                 </>
-                               )}
-                             </button>
-                          </div>
+                        <div className="bg-zinc-900 border border-white/10 rounded-[40px] p-10">
+                           <header className="flex items-center gap-4 mb-10">
+                              <FileText className="w-6 h-6 text-amber-400" />
+                              <h3 className="text-lg font-bold text-white uppercase tracking-tight">ads.txt Content</h3>
+                           </header>
+                           <div className="space-y-6">
+                              <p className="text-[9px] text-white/30 uppercase tracking-widest leading-relaxed">Inserisci qui le righe per il file ads.txt. Sarà servito automaticamente all'indirizzo gamespulse.it/ads.txt</p>
+                              <textarea rows={10} value={adsenseConfig.adsTxt} onChange={e => setAdsenseConfig({...adsenseConfig, adsTxt: e.target.value})} placeholder="google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0" className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-5 text-white font-mono text-[10px] focus:outline-none focus:border-amber-500/30 resize-none" />
+                              
+                              <button onClick={() => saveAdSense(adsenseConfig)} disabled={isSavingAdsense} className={`w-full py-5 rounded-2xl shadow-xl transition-all uppercase tracking-widest text-[11px] font-black flex items-center justify-center gap-3 ${isSavingAdsense ? 'bg-indigo-900 text-white/50 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20 active:scale-95'}`}>
+                                 {isSavingAdsense ? <><RefreshCw className="animate-spin" size={16} /> Salvataggio...</> : <><Save size={16} /> Salva Configurazione</>}
+                              </button>
+                           </div>
                         </div>
-                      </div>
-                    </motion.div>
-                  )}
+                     </div>
+                  </motion.div>
+                )}
 
-                </div>
+                {adminTab === 'analytics' && (
+                   <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                    <header className="mb-12 border-b border-white/5 pb-8">
+                       <h2 className="text-4xl font-black text-white uppercase tracking-tighter">Traffico & Tracking</h2>
+                       <p className="text-[10px] text-white/30 uppercase tracking-[0.4em] font-bold mt-2">Monitoraggio Sessioni e Utenti Real-Time</p>
+                    </header>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+                       <div className="bg-zinc-900 border border-white/10 rounded-[35px] p-8 group">
+                          <header className="flex justify-between items-center mb-4">
+                             <TrendingUp className="text-emerald-400" size={20} />
+                             <span className="text-[9px] font-black text-white/20 tracking-widest uppercase">Visitatori Totali</span>
+                          </header>
+                          <p className="text-4xl font-black text-white tracking-tighter">{realTraffic.total}</p>
+                          <div className="h-2 w-full bg-white/5 rounded-full mt-6 overflow-hidden">
+                             <motion.div initial={{ width: 0 }} animate={{ width: '65%' }} className="h-full bg-emerald-400" />
+                          </div>
+                       </div>
+                       
+                       <div className="bg-zinc-900 border border-white/10 rounded-[35px] p-8 group">
+                          <header className="flex justify-between items-center mb-4">
+                             <Activity className="text-neon-blue" size={20} />
+                             <span className="text-[9px] font-black text-white/20 tracking-widest uppercase">Oggi (Real-Time)</span>
+                          </header>
+                          <p className="text-4xl font-black text-white tracking-tighter">{realTraffic.today}</p>
+                          <div className="h-2 w-full bg-white/5 rounded-full mt-6 overflow-hidden">
+                             <motion.div initial={{ width: 0 }} animate={{ width: '40%' }} className="h-full bg-neon-blue" />
+                          </div>
+                       </div>
+
+                       <div className="bg-zinc-900 border border-white/10 rounded-[35px] p-8 group">
+                          <header className="flex justify-between items-center mb-4">
+                             <Users className="text-purple-500" size={20} />
+                             <span className="text-[9px] font-black text-white/20 tracking-widest uppercase">Stima Sessioni</span>
+                          </header>
+                          <p className="text-4xl font-black text-white tracking-tighter">{Math.floor(realTraffic.total * 0.82)}</p>
+                          <div className="h-2 w-full bg-white/5 rounded-full mt-6 overflow-hidden">
+                             <motion.div initial={{ width: 0 }} animate={{ width: '82%' }} className="h-full bg-purple-500" />
+                          </div>
+                       </div>
+                    </div>
+
+                    <div className="bg-zinc-900 border border-white/10 rounded-[40px] p-10">
+                       <h3 className="text-sm font-black text-white uppercase tracking-widest mb-10 flex items-center gap-3">
+                          <BarChart3 className="text-neon-blue" size={20} />
+                          Andamento Storico Settimanale
+                       </h3>
+                       <div className="h-64 flex items-end gap-3 px-2">
+                          {[40, 65, 45, 90, 55, 100, 75].map((val, i) => (
+                            <div key={i} className="flex-1 group relative h-full flex flex-col justify-end">
+                               <motion.div 
+                                 initial={{ height: 0 }} animate={{ height: `${val}%` }}
+                                 className="w-full bg-gradient-to-t from-neon-blue/20 to-neon-blue rounded-t-xl opacity-60 group-hover:opacity-100 transition-all border-t border-white/20"
+                               />
+                               <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 text-[8px] font-black text-white/20 uppercase tracking-widest">Giorno {i+1}</span>
+                            </div>
+                          ))}
+                       </div>
+                    </div>
+                   </motion.div>
+                )}
               </div>
             </div>
-             {/* Notifica Salvataggio Premium */}
-             <AnimatePresence>
-               {saveStatus.type && (
-                 <motion.div 
-                   initial={{ opacity: 0 }}
-                   animate={{ opacity: 1 }}
-                   exit={{ opacity: 0 }}
-                   className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/80 backdrop-blur-xl"
-                 >
-                   <motion.div
-                     initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                     animate={{ scale: 1, opacity: 1, y: 0 }}
-                     exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                     className="w-full max-w-md bg-[#020617] border border-white/10 rounded-[40px] p-10 text-center shadow-[0_0_50px_rgba(0,0,0,1)] relative overflow-hidden"
-                   >
-                     <div className={`absolute top-0 inset-x-0 h-1 ${saveStatus.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                     
-                     <div className={`w-20 h-20 rounded-3xl mx-auto mb-8 flex items-center justify-center ${
-                       saveStatus.type === 'success' 
-                         ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                         : 'bg-red-500/10 text-red-500 border border-red-500/20'
-                     }`}>
-                       {saveStatus.type === 'success' ? <Check className="w-10 h-10" /> : <AlertCircle className="w-10 h-10" />}
-                     </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-                     <h3 className="text-2xl font-black text-white uppercase tracking-tighter mb-4">
-                       {saveStatus.type === 'success' ? 'Operazione Riuscita' : 'Attenzione'}
-                     </h3>
-                     
-                     <p className="text-sm text-white/50 leading-relaxed mb-10 font-medium px-4">
-                       {saveStatus.message}
-                     </p>
-
-                     <button 
-                       onClick={() => setSaveStatus({ type: null, message: '' })}
-                       className="w-full py-5 bg-white text-black font-black uppercase tracking-widest text-[11px] rounded-2xl hover:bg-slate-200 transition-all active:scale-[0.95]"
-                     >
-                       Conferma
-                     </button>
-                   </motion.div>
-                 </motion.div>
-               )}
-             </AnimatePresence>
-
-           </motion.div>
+      {/* Save Notification */}
+      <AnimatePresence>
+        {saveStatus.type && (
+          <motion.div 
+            initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }}
+            className="fixed bottom-10 left-10 z-[1000] px-8 py-5 rounded-[25px] flex items-center gap-4 bg-zinc-950 border border-white/10 shadow-2xl"
+          >
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${saveStatus.type === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-500'}`}>
+              {saveStatus.type === 'success' ? <Check size={20} /> : <AlertCircle size={20} />}
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-white uppercase tracking-widest">{saveStatus.message}</p>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
       <AnimatePresence>
-        {deleteConfirm?.show && (
-          <div className="fixed inset-0 z-[3000] flex items-center justify-center p-6 bg-black/95 backdrop-blur-2xl">
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="w-full max-w-md bg-slate-950 border border-white/10 rounded-[40px] p-12 text-center shadow-[0_0_100px_rgba(0,0,0,1)]"
-            >
-              <div className="w-24 h-24 rounded-[30px] bg-red-500/10 text-red-500 border border-red-500/20 flex items-center justify-center mx-auto mb-10">
-                <Trash2 size={40} />
-              </div>
-              <h3 className="text-3xl font-black text-white uppercase tracking-tighter mb-5">Elimina Fonte?</h3>
-              <p className="text-sm text-white/40 mb-12 font-medium leading-relaxed px-6">
-                Sei sicuro di voler eliminare <span className="text-white font-bold">{deleteConfirm.name}</span>?<br/>Questa azione rimuoverà definitivamente la fonte e le sue notizie.
-              </p>
-              <div className="flex gap-4">
-                <button 
-                  onClick={() => setDeleteConfirm(null)}
-                  className="flex-1 py-5 bg-white/5 text-white/60 font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-white/10 transition-all"
-                >
-                  Annulla
-                </button>
-                <button 
-                  onClick={() => {
-                    deleteSource(deleteConfirm.id);
-                    setDeleteConfirm(null);
-                  }}
-                  className="flex-1 py-5 bg-red-600 text-white font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-red-700 shadow-xl shadow-red-600/30 transition-all"
-                >
-                  Conferma Elimina
-                </button>
-              </div>
-            </motion.div>
-          </div>
+        {showCookieBanner && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-6 left-6 right-6 md:left-auto md:w-96 z-[2000] bg-zinc-950 border border-white/10 p-8 rounded-[35px] shadow-2xl backdrop-blur-3xl"
+          >
+            <div className="flex items-center gap-4 mb-6">
+               <div className="w-12 h-12 rounded-2xl bg-neon-blue/10 flex items-center justify-center text-neon-blue">
+                 <ShieldCheck size={24} />
+               </div>
+               <div>
+                 <h4 className="text-sm font-black text-white uppercase tracking-widest">Privacy Intel</h4>
+                 <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-tighter">Security Protocol</p>
+               </div>
+            </div>
+            <p className="text-[11px] text-zinc-400 leading-relaxed mb-8 font-medium">
+              Utilizziamo i cookie per ottimizzare la tua esperienza di gioco e analizzare il traffico. Accettando, acconsenti al nostro protocollo di dati.
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => handleCookieConsent(false)}
+                className="flex-1 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-white transition-colors"
+                title="Rifiuta protocollo cookie"
+              >
+                Rifiuta
+              </button>
+              <button 
+                onClick={() => handleCookieConsent(true)}
+                className="flex-2 py-4 px-8 bg-neon-blue text-black font-black text-[10px] uppercase tracking-widest rounded-2xl hover:bg-white transition-all shadow-lg shadow-neon-blue/20"
+                title="Accetta protocollo cookie"
+              >
+                Accetta Protocollo
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {deleteConfirm && (
+          <DeleteConfirmModal 
+            show={deleteConfirm.show}
+            name={deleteConfirm.name}
+            onCancel={() => setDeleteConfirm(null)}
+            onConfirm={() => {
+              deleteSource(deleteConfirm.id);
+              setDeleteConfirm(null);
+            }}
+          />
         )}
       </AnimatePresence>
     </div>
   );
 }
 
+// Sub-component for Google AdSense
+const AdCard = ({ id, onNext }: { id: string; onNext?: () => void }) => {
+  const [adsenseConfig] = useState(() => {
+    const saved = localStorage.getItem('adsense_config');
+    return saved ? JSON.parse(saved) : { enabled: false, client: '', slot: '' };
+  });
+
+  useEffect(() => {
+    if (adsenseConfig.enabled) {
+      try {
+        ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+      } catch (e) {
+        console.error("AdSense error:", e);
+      }
+    }
+  }, [adsenseConfig.enabled]);
+
+  if (!adsenseConfig.enabled) return null;
+
+  return (
+    <div className="w-full flex flex-col items-center justify-center py-10 px-6">
+      <div className="w-full max-w-4xl bg-zinc-950 border border-white/5 rounded-[40px] p-1 overflow-hidden relative group">
+        <div className="absolute top-4 right-8 flex items-center gap-2 z-10">
+           {onNext && (
+             <button 
+               onClick={onNext}
+               className="mr-4 px-4 py-1.5 bg-white/5 hover:bg-white/10 text-[9px] font-black text-white/40 hover:text-white uppercase tracking-widest rounded-full border border-white/10 transition-all flex items-center gap-2"
+             >
+               Skip ad <ChevronRight size={10} />
+             </button>
+           )}
+           <span className="text-[8px] font-black text-white/20 uppercase tracking-[0.2em]">Sponsored Intel</span>
+           <div className="w-1 h-1 rounded-full bg-neon-blue animate-pulse" />
+        </div>
+        <div className="bg-black/40 backdrop-blur-sm rounded-[38px] p-8 min-h-[250px] flex items-center justify-center border border-white/5">
+           <ins className="adsbygoogle"
+                style={{ display: 'block', width: '100%', minHeight: '200px' }}
+                data-ad-client={adsenseConfig.client}
+                data-ad-slot={adsenseConfig.slot}
+                data-ad-format="auto"
+                data-full-width-responsive="true"></ins>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export { App };
+
+// Sub-component for Delete Confirmation Modal
+const DeleteConfirmModal = ({ show, name, onCancel, onConfirm }: { show: boolean, name: string, onCancel: () => void, onConfirm: () => void }) => {
+  if (!show) return null;
+  return (
+    <div className="fixed inset-0 z-[3000] flex items-center justify-center p-6 bg-black/95 backdrop-blur-2xl">
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+        className="w-full max-w-md bg-zinc-950 border border-white/10 rounded-[40px] p-12 text-center shadow-[0_0_100px_rgba(0,0,0,1)]"
+      >
+        <div className="w-24 h-24 rounded-[30px] bg-red-500/10 text-red-500 border border-red-500/20 flex items-center justify-center mx-auto mb-10">
+          <Trash2 size={40} />
+        </div>
+        <h3 className="text-3xl font-black text-white uppercase tracking-tighter mb-5 text-balance leading-none">ELIMINA INTEL?</h3>
+        <p className="text-sm text-white/40 mb-12 font-medium leading-relaxed px-6">
+          Sei sicuro di voler eliminare <span className="text-white font-bold">{name}</span>?<br/>Questa azione rimuoverà permanentemente la fonte dal database.
+        </p>
+        <div className="flex gap-4">
+          <button 
+            onClick={onCancel}
+            className="flex-1 py-5 bg-white/5 text-white/60 font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-white/10 transition-all font-mono"
+          >
+            Annulla Protocollo
+          </button>
+          <button 
+            onClick={onConfirm}
+            className="flex-1 py-5 bg-red-600 text-white font-black uppercase tracking-widest text-[10px] rounded-2xl hover:bg-red-700 shadow-xl shadow-red-600/30 transition-all font-mono"
+          >
+            Conferma Elimina
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
