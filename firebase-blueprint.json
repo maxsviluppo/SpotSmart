@@ -1,29 +1,45 @@
 {
   "entities": {
-    "UserProfile": {
-      "title": "User Profile",
-      "description": "Stores user preferences and profile information.",
+    "User": {
+      "title": "User",
+      "description": "User profile and settings",
       "type": "object",
       "properties": {
-        "uid": { "type": "string", "description": "The unique ID of the user." },
-        "displayName": { "type": "string", "description": "The user's display name." },
-        "email": { "type": "string", "description": "The user's email address." },
-        "photoURL": { "type": "string", "description": "The user's profile picture URL." },
-        "favorites": { 
-          "type": "array", 
-          "items": { "type": "string" },
-          "description": "List of news item IDs favorited by the user." 
-        },
-        "createdAt": { "type": "string", "format": "date-time", "description": "When the profile was created." },
-        "updatedAt": { "type": "string", "format": "date-time", "description": "When the profile was last updated." }
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] }
       },
-      "required": ["uid", "email", "favorites"]
+      "required": ["uid", "email"]
+    },
+    "Favorite": {
+      "title": "Favorite",
+      "description": "A news item favorited by a user, expires after 24 hours",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "newsId": { "type": "string" },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "category": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "url": { "type": "string" },
+        "source": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "newsId", "createdAt", "expiresAt"]
     }
   },
   "firestore": {
-    "/users/{userId}": {
-      "schema": "UserProfile",
-      "description": "User profiles collection."
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents"
+    },
+    "favorites/{favoriteId}": {
+      "schema": "Favorite",
+      "description": "User favorites with 24h expiration"
     }
   }
 }
