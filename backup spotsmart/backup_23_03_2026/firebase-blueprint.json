@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and settings",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] }
+      },
+      "required": ["uid", "email"]
+    },
+    "Favorite": {
+      "title": "Favorite",
+      "description": "A news item favorited by a user, expires after 24 hours",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "newsId": { "type": "string" },
+        "title": { "type": "string" },
+        "summary": { "type": "string" },
+        "category": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "url": { "type": "string" },
+        "source": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "newsId", "createdAt", "expiresAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents"
+    },
+    "favorites/{favoriteId}": {
+      "schema": "Favorite",
+      "description": "User favorites with 24h expiration"
+    }
+  }
+}

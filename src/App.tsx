@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Newspaper, TrendingUp, Clock, Share2, ExternalLink, Menu, X, Settings, User as UserIcon, Heart, LogOut, BookOpen, LayoutGrid, Globe, Cpu, Music, Gamepad2, Palette, FlaskConical, Search, RefreshCw, Info, Send, Trophy, MapPin, Plus, Stethoscope, Shield, Lock, Save, Trash2, CheckCircle2, Activity, Database, BarChart3, ChevronRight, Users, FileText, Check, AlertCircle } from 'lucide-react';
 import { auth, loginWithGoogle, logout, onAuthStateChanged, db, handleFirestoreError, OperationType } from './firebase';
 import type { User } from './firebase';
-import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, Timestamp, getDoc, addDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, Timestamp, getDoc, addDoc, updateDoc } from 'firebase/firestore';
 import { FEEDS } from './feeds';
 
 interface NewsItem {
@@ -522,17 +522,22 @@ export default function App() {
   };
 
   const handleToggleSource = (id: string) => {
+    if (!id) return;
+    console.log("[Admin] Toggling source:", id);
     const updated = newsSources.map(s =>
       s.id === id ? { ...s, active: s.active === false ? true : false } : s
     );
     setNewsSources(updated);
-    // Persist only the changed record to Firestore as well
+    
+    // Direct Firestore update (functions are already imported at top of file)
     const changed = updated.find(s => s.id === id);
     if (changed) {
-      import('firebase/firestore').then(({ doc: firestoreDoc, updateDoc }) => {
-        updateDoc(firestoreDoc(db, 'news_sources', id), { active: changed.active }).catch(() => {});
+      const sourceRef = doc(db, 'news_sources', id);
+      updateDoc(sourceRef, { active: changed.active }).catch(err => {
+        console.error("Firestore update failed:", err);
       });
     }
+    
     saveSources(updated);
   };
   const splashBg = useMemo(() => `https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&q=80&w=1920&h=1080`, []);
