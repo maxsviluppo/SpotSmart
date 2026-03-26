@@ -1,0 +1,24 @@
+Checking 90 sources...
+
+--- Category Sampling ---
+Cronaca      | Sample: ANSA            | Items: 28
+Mondo        | Sample: Reuters         | ERROR: HTTP 404
+Regioni      | Sample: La Stampa (Torino) | ERROR: fetch failed
+Scienza      | Sample: NASA            | Items: 10
+Tecnologia   | Sample: HD Blog         | Items: 20
+Finanza      | Sample: Il Sole 24 Ore  | ERROR: HTTP 404
+Sport        | Sample: Gazzetta        | Items: 125
+Cultura      | Sample: Il Post (Cultura) | Items: 10
+Salute       | Sample: Fondazione Veronesi | ERROR: HTTP 404
+
+--- Final Stats ---
+Category     | Total | Active | Example Result
+Cronaca      | 3     | 3      | 28
+Mondo        | 2     | 2      | 0
+Regioni      | 8     | 8      | 0
+Scienza      | 10    | 10     | 10
+Tecnologia   | 34    | 34     | 20
+Finanza      | 10    | 10     | 0
+Sport        | 2     | 2      | 125
+Cultura      | 10    | 10     | 10
+Salute       | 11    | 11     | 0

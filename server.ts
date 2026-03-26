@@ -318,9 +318,11 @@ app.get("/ads.txt", async (req, res) => {
   res.send(adsense.adsTxt || "google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0");
 });
 
-// Proxy for Article Loading (Taken from GamesPulse)
+// Proxy for Article Loading (Improved with Reading Mode & Stability)
 app.get("/api/proxy", async (req, res) => {
   const url = req.query.url as string;
+  const mode = req.query.mode as string; // 'read' for reader view
+  
   if (!url) return res.status(400).send("URL is required");
 
   try {
@@ -337,12 +339,66 @@ app.get("/api/proxy", async (req, res) => {
     if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
 
     let html = await response.text();
+    const $ = cheerio.load(html);
     
-    // Inject <base> tag to fix relative links and images
+    // Inject <base> tag to fix relative links
     const baseUrl = new URL(url).origin;
     const baseTag = `<base href="${baseUrl}/">`;
+
+    if (mode === 'read') {
+      // READING MODE: Extract only relevant content
+      // Remove noise
+      $('script, style, iframe, ads, .ads, .adv, aside, header, footer, nav, .menu, .sidebar, .comments, .related').remove();
+      
+      // User explicitly asked "senza immagini" (without images)
+      $('img, picture, svg, video, figure').remove();
+
+      // Find main content
+      let content = $('article').html() || 
+                    $('.article-body').html() || 
+                    $('.post-content').html() || 
+                    $('.content').html() || 
+                    $('#main-content').html() || 
+                    $('main').html() || 
+                    $('body').html();
+
+      // Basic styling for the clean view
+      const cleanHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          ${baseTag}
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            body { 
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+              line-height: 1.6; 
+              color: #1a1a1a; 
+              max-width: 800px; 
+              margin: 0 auto; 
+              padding: 2rem 1.5rem;
+              background: #fff;
+            }
+            h1, h2, h3 { line-height: 1.2; margin-top: 2rem; color: #000; }
+            p { margin-bottom: 1.5rem; font-size: 1.1rem; }
+            a { color: #4f46e5; text-decoration: none; }
+            a:hover { text-decoration: underline; }
+            ul, ol { margin-bottom: 1.5rem; padding-left: 1.5rem; }
+            li { margin-bottom: 0.5rem; }
+            blockquote { border-left: 4px solid #e5e7eb; padding-left: 1rem; margin-left: 0; font-style: italic; color: #4b5563; }
+            .read-time { color: #6b7280; font-size: 0.875rem; margin-bottom: 2rem; display: block; }
+          </style>
+        </head>
+        <body>
+          ${content}
+        </body>
+        </html>
+      `;
+      return res.send(cleanHtml);
+    }
     
-    // Strip scripts for specific sites known to cause issues in iframes or bot detection
+    // ORIGINAL MODE: Strip scripts and fix frame-breaking
     const troublesomeSites = [
       'engadget.com', 'yahoo.com', 'techcrunch.com', 'reuters.com', 'cnbc.com', 
       'ansa.it', 'hdblog.it', 'wired.it', 'tomshw.it', 'dday.it', 'macitynet.it',
@@ -351,40 +407,53 @@ app.get("/api/proxy", async (req, res) => {
     const needsStripping = troublesomeSites.some(site => url.toLowerCase().includes(site));
 
     if (needsStripping) {
-      // 1. Remove dangerous scripts only, keeping CSS for formatting
       html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
       html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
       html = html.replace(/<link rel="preload" as="script" [^>]*>/gi, '');
       
-      // 2. Remove common frame-breaking JS patterns or forced redirects
+      // Expanded frame-breaking protection (GAMESPULSE ELITE STABILITY)
       html = html.replace(/if\s*\(top\s*!==\s*self\)\s*\{[\s\S]*?\}/gi, '');
       html = html.replace(/if\s*\(window\.top\s*!==\s*window\.self\)\s*\{[\s\S]*?\}/gi, '');
       html = html.replace(/if\s*\(parent\s*!==\s*self\)\s*\{[\s\S]*?\}/gi, '');
       html = html.replace(/top\.location\.href\s*=\s*(self|window)\.location\.href/gi, '');
       html = html.replace(/window\.top\s*=\s*window/gi, '');
+      html = html.replace(/location\.replace/g, '//location.replace');
     }
 
-    // Add Base Tag for relative assets and ensure it works with the UI
-    if (html.includes("<head>")) {
-      // Also inject a small script to block frame-breaking from JS directly
-      const frameScript = `
-        <script>
-          // Extra protection against frame-breaking
-          window.top = window.self;
-          window.parent = window.self;
-          Object.defineProperty(window, 'top', { get: function() { return window.self; } });
-          Object.defineProperty(window, 'parent', { get: function() { return window.self; } });
-          // Force layout sync for formatted text
+    // Extra script for frame isolation and interaction handling
+    const frameScript = `
+      <script>
+        (function() {
+          // Absolute Isolation
+          try {
+            window.top = window.self;
+            window.parent = window.self;
+            Object.defineProperty(window, 'top', { get: function() { return window.self; } });
+            Object.defineProperty(window, 'parent', { get: function() { return window.self; } });
+          } catch(e) {}
+
+          // Prevent app-hangs from heavy scripts that might still be alive
+          window.onerror = function() { return true; };
+          
           document.addEventListener('DOMContentLoaded', () => {
-             // Let the site maintain its original look but fix overflow
              document.documentElement.style.overflowX = 'hidden';
              document.body.style.overflowX = 'hidden';
+             
+             // Open all links in top window if they try to escape
+             document.querySelectorAll('a').forEach(a => {
+               if (a.target === '_top' || a.target === '_parent') {
+                 a.target = '_blank';
+               }
+             });
           });
-        </script>
-      `;
+        })();
+      </script>
+    `;
+
+    if (html.includes("<head>")) {
       html = html.replace("<head>", `<head>${baseTag}${frameScript}`);
     } else {
-      html = `${baseTag}${html}`;
+      html = `${baseTag}${frameScript}${html}`;
     }
 
     res.setHeader("Content-Type", "text/html");
@@ -395,12 +464,13 @@ app.get("/api/proxy", async (req, res) => {
   }
 });
 
+
 // Improved Metadata Extraction (Fully Synchronized with GamesPulse)
 async function fetchMetaInfo(url: string) {
   if (!url) return { image: null, video: null };
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 seconds
+    const timeoutId = setTimeout(() => controller.abort(), 12000); // Increased to 12s for heavy sites
     const response = await fetch(url, { 
       signal: controller.signal,
       headers: { 
@@ -459,7 +529,7 @@ function extractImageUrl(item: any) {
   }
   
   // 2. Media Content / Thumbnail / Group
-  const mediaTags = ["media:content", "media:thumbnail", "media:group", "image", "enclosure", "thumb"];
+  const mediaTags = ["media:content", "media:thumbnail", "media:group", "image", "enclosure", "thumb", "og:image", "twitter:image"];
   for (const tag of mediaTags) {
     const content = item[tag];
     if (content) {
@@ -480,7 +550,7 @@ function extractImageUrl(item: any) {
   
   // 3. Content/Description Regex - Prioritize content:encoded
   const content = item["content:encoded"] || item.content || item.description || "";
-  const imgMatch = content.match(/<img[^>]+(?:src|data-src|srcset)=["']([^"'> ]+)["']/);
+  const imgMatch = content.match(/<img[^>]+(?:src|data-src|srcset|original-src)=["']([^"'> ]+)["']/i);
   if (imgMatch) {
     const url = imgMatch[1];
     if (!url.includes('pixel') && !url.includes('analytics') && !url.includes('doubleclick') && !url.includes('spacer')) {
@@ -647,8 +717,8 @@ app.get("/api/news", async (req, res) => {
       });
     }
 
-    // Deep enhancement for items without media (max 10 per feed to keep it fast)
-    const newsToEnhance = items.filter(item => !item.imageUrl || !item.videoUrl).slice(0, 10);
+    // Deep enhancement for items without media (increased to 20 per feed for better coverage)
+    const newsToEnhance = items.filter(item => !item.imageUrl || !item.videoUrl).slice(0, 20);
     if (newsToEnhance.length > 0) {
       await Promise.all(newsToEnhance.map(async (item) => {
         try {

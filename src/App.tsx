@@ -22,6 +22,7 @@ interface NewsItem {
   videoUrl?: string;
   time: string;
   timestamp: number;
+  rnd?: number;
 }
 
 const variants = {
@@ -140,6 +141,7 @@ function NewsCard({
   setIsFlipped
 }: any) {
   const [isFlippedLocal, setIsFlippedLocal] = useState(false);
+  const [isReadingMode, setIsReadingMode] = useState(false);
   
   // Use local state if prop is not provided, for flexibility
   const flipped = isFlipped !== undefined ? isFlipped : isFlippedLocal;
@@ -147,8 +149,9 @@ function NewsCard({
 
   const getIframeUrl = (url: string) => {
     const secureUrl = url.startsWith('http://') ? url.replace('http://', 'https://') : url;
-    // Use local /api/proxy (synchronized from GamesPulse for robust rendering)
-    return `/api/proxy?url=${encodeURIComponent(secureUrl)}`;
+    let proxyUrl = `/api/proxy?url=${encodeURIComponent(secureUrl)}`;
+    if (isReadingMode) proxyUrl += '&mode=read';
+    return proxyUrl;
   };
 
   return (
@@ -168,6 +171,7 @@ function NewsCard({
           setDirection(offset.x > 0 ? -1 : 1);
           setCurrentIndex(nextIndex);
           setIsFlipped(false);
+          setIsReadingMode(false);
         }
       }}
       animate="center"
@@ -231,9 +235,9 @@ function NewsCard({
                 />
               </div>
             )}
-            <div className="absolute inset-x-0 bottom-0 h-[80%] z-20 pointer-events-none bg-gradient-to-t from-black via-black/90 to-transparent opacity-100" />
-            <div className="absolute inset-x-0 bottom-0 h-1/2 z-20 pointer-events-none bg-gradient-to-t from-black to-transparent opacity-100" />
-            <div className="absolute inset-0 z-20 pointer-events-none shadow-[inset_0_-250px_200px_-100px_rgba(0,0,0,1)]" />
+            <div className="absolute inset-x-0 bottom-[-5px] h-[80%] z-20 pointer-events-none bg-gradient-to-t from-black via-black/95 to-transparent opacity-100" />
+            <div className="absolute inset-x-0 bottom-[-5px] h-1/2 z-20 pointer-events-none bg-gradient-to-t from-black to-transparent opacity-100" />
+            <div className="absolute inset-0 z-20 pointer-events-none shadow-[inset_0_-255px_200px_-100px_rgba(0,0,0,1)]" />
           </div>
 
           <div className="relative z-20 flex-1 flex flex-col justify-end p-8 md:p-16 pt-0 pb-28 md:pb-36 mt-0">
@@ -358,24 +362,44 @@ function NewsCard({
                onClick={(e) => {
                  e.stopPropagation();
                  setFlipped(false);
+                 setIsReadingMode(false);
                }}
                className="w-10 h-10 rounded-full bg-black text-white hover:bg-neutral-800 transition-all flex items-center justify-center shadow-lg active:scale-90"
             >
               <X className="w-5 h-5" />
             </button>
-            <div className="flex-1 px-4 truncate text-center">
-              <span className="text-xs font-bold text-black/60 uppercase tracking-widest truncate">{currentItem.source}</span>
+            
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsReadingMode(!isReadingMode);
+                }}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${
+                  isReadingMode 
+                    ? 'bg-indigo-600 border-indigo-500 text-white shadow-[0_0_10px_rgba(79,70,229,0.4)]' 
+                    : 'bg-neutral-100 border-neutral-200 text-neutral-600 hover:bg-neutral-200'
+                }`}
+              >
+                <BookOpen className={`w-4 h-4 ${isReadingMode ? 'animate-pulse' : ''}`} />
+                <span className="text-[10px] font-bold uppercase tracking-wider">
+                  {isReadingMode ? 'Testo Pulito' : 'Originale'}
+                </span>
+              </button>
             </div>
-            <a 
-              href={currentItem.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-10 h-10 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 transition-all flex items-center justify-center shadow-lg active:scale-90"
-              title="Apri nel browser"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <ExternalLink className="w-5 h-5" />
-            </a>
+
+            <div className="flex items-center gap-2">
+              <a 
+                href={currentItem.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-10 h-10 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 transition-all flex items-center justify-center shadow-lg active:scale-90"
+                title="Apri nel browser"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ExternalLink className="w-5 h-5" />
+              </a>
+            </div>
           </div>
           
           <div className="flex-1 relative w-full h-full bg-white">
@@ -387,14 +411,14 @@ function NewsCard({
                   <p className="text-[10px] mt-2 max-w-[200px]">Alcuni siti potrebbero bloccare la visualizzazione in questa app.</p>
                 </div>
                 <iframe 
+                  key={`${currentItem.id}-${isReadingMode}`}
                   src={getIframeUrl(currentItem.url)} 
                   className="relative z-10 w-full h-full border-none"
                   title={currentItem.title}
-                  loading="lazy"
+                  loading="eager"
+                  sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
+                  referrerPolicy="no-referrer"
                   style={{ overflow: 'auto' }}
-                  onError={() => {
-                    // This rarely triggers for cross-origin iframes but good to have
-                  }}
                 />
               </>
             )}
@@ -524,15 +548,17 @@ export default function App() {
   const handleToggleSource = (id: string) => {
     if (!id) return;
     console.log("[Admin] Toggling source:", id);
-    const updated = newsSources.map(s =>
-      String(s.id) === String(id) ? { ...s, active: s.active === false ? true : false } : s
-    );
+    const updated = newsSources.map(s => {
+      const sourceId = String(s.id || s.url);
+      const targetId = String(id);
+      return sourceId === targetId ? { ...s, active: s.active === false ? true : false } : s;
+    });
     setNewsSources(updated);
     
     // Direct Firestore update
-    const changed = updated.find(s => String(s.id) === String(id));
-    if (changed) {
-      const sourceRef = doc(db, 'news_sources', String(id));
+    const changed = updated.find(s => String(s.id || s.url) === String(id));
+    if (changed && changed.id) {
+      const sourceRef = doc(db, 'news_sources', String(changed.id));
       updateDoc(sourceRef, { active: changed.active }).catch(err => {
         console.error("Firestore update failed:", err);
       });
@@ -707,7 +733,7 @@ export default function App() {
 
         // 2. Try to seed Firestore (catch error to prevent UI crash if rules block it)
         try {
-          const promises = FEEDS.map(source => addDoc(collection(db, 'news_sources'), source));
+          const promises = FEEDS.map(source => setDoc(doc(db, 'news_sources', source.id), { ...source, active: true }));
           await Promise.all(promises);
         } catch (e) {
           console.error("Firestore seed failed (likely permission rules):", e);
@@ -975,7 +1001,7 @@ export default function App() {
       const response = await fetch(`/api/news?url=${encodeURIComponent(source.url)}&category=${encodeURIComponent(source.cat)}&source=${encodeURIComponent(source.name)}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const items = await response.json();
-      return items as NewsItem[];
+      return (items as NewsItem[]).map(item => ({...item, rnd: Math.random()}));
     } catch (e) {
       console.error(`Error fetching feed ${source.name}:`, e);
       return [];
@@ -989,7 +1015,7 @@ export default function App() {
       try {
         const parsedCache = JSON.parse(cachedNews);
         if (parsedCache && parsedCache.length > 0) {
-          setNewsItems(parsedCache);
+          setNewsItems(parsedCache.map((item: NewsItem) => ({...item, rnd: Math.random()})));
           setLoading(false);
         }
       } catch (e) { }
@@ -1152,7 +1178,7 @@ export default function App() {
       ? Object.values(favorites).map((f: any) => ({ ...f, id: f.newsId })).sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)) 
       : newsItems;
 
-    return base.filter(item => {
+    const filtered = base.filter(item => {
       // If showing favorites from the HEART menu, we ignore category unless specifically searching
       const category = item.category || 'Generale';
       const matchesCategory = showFavoritesOnly || selectedCategory === 'all' || 
@@ -1165,6 +1191,13 @@ export default function App() {
 
       return matchesCategory && matchesSearch;
     });
+
+    // 🚀 RANDOM MODE: When in 'all' view, shuffle news randomly per-session
+    if (selectedCategory === 'all' && !showFavoritesOnly && !searchQuery) {
+      return [...filtered].sort((a, b) => (a.rnd || 0) - (b.rnd || 0));
+    }
+
+    return filtered;
   }, [showFavoritesOnly, favorites, newsItems, selectedCategory, searchQuery]);
   // Build virtual feed: insert ad slots every 5-8 news items
   const feedWithAds = useMemo(() => {

@@ -1,0 +1,36 @@
+
+--- Testing ANSA ---
+Found 28 items
+Item 1: La citazione "Obbedisco", da Giuseppe Garibaldi a Daniela Santanch├¿
+  Extracted Image: NONE
+  Keys: title, link, pubDate, content, contentSnippet, guid, isoDate
+  Enclosure: undefined
+  Description snippet: 
+Item 2: Cos'├¿ l'influenza aviaria e quali sono i pericoli per l'uomo
+  Extracted Image: NONE
+  Keys: title, link, pubDate, content, contentSnippet, guid, isoDate
+  Enclosure: undefined
+  Description snippet: Per l'Ecdc il rischio di infezione per la popolazione generale ├¿ basso
+Item 3: Grecia, turisti visitano la chiesa pendente mettendo alla prova l'equilibrio
+  Extracted Image: NONE
+  Keys: title, link, pubDate, content, contentSnippet, guid, isoDate
+  Enclosure: undefined
+  Description snippet: Visitatori: "L'inclinazione e' inimmaginabile, e' incredibile, ti fa girare la testa"
+
+--- Testing NASA ---
+Found 10 items
+Item 1: NASA Sets Coverage for First Artemis Crewed Mission Around Moon
+  Extracted Image: https://www.nasa.gov/wp-content/uploads/2026/03/a2crew-7ff19d.jpg?w=2048
+Item 2: NASA Sets Coverage for Artemis II Moon Mission
+  Extracted Image: https://www.nasa.gov/wp-content/uploads/2026/03/a2crew.jpg?w=2048
+Item 3: Artemis Moon Tree Dedicated in Honor of Mary W. Jackson
+  Extracted Image: https://assets.science.nasa.gov/dynamicimage/assets/science/cds/learn/science-activation-stories/202
+
+--- Testing HD Blog ---
+Found 20 items
+Item 1: Samsung Galaxy A37 e A57 provati: molti cambiamenti estetici e all-in sul software | VIDEO
+  Extracted Image: https://hd2.tudocdn.net/1331151?w=660
+Item 2: Galaxy S26 e AirDrop, ci siamo: l'aggiornamento ├¿ in distribuzione in Italia
+  Extracted Image: https://hd2.tudocdn.net/1331134?w=660
+Item 3: Linux, la community contro la verifica dell'et├á: nasce "Liberated systemd"
+  Extracted Image: https://hd2.tudocdn.net/1330452?w=660
