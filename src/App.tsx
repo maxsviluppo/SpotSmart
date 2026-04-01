@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Newspaper, TrendingUp, Clock, Share2, ExternalLink, Menu, X, Settings, User as UserIcon, Heart, LogOut, BookOpen, LayoutGrid, Globe, Cpu, Music, Gamepad2, Palette, FlaskConical, Search, RefreshCw, Info, Send, Trophy, MapPin, Plus, Stethoscope, Shield, Lock, Save, Trash2, CheckCircle2, Activity, Database, BarChart3, ChevronRight, Users, FileText, Check, AlertCircle } from 'lucide-react';
+import { Newspaper, TrendingUp, Clock, Share2, ExternalLink, Menu, X, Settings, User as UserIcon, Heart, LogOut, BookOpen, LayoutGrid, Globe, Cpu, Music, Gamepad2, Palette, FlaskConical, Search, RefreshCw, Info, Send, Trophy, MapPin, Plus, Stethoscope, Shield, Lock, Save, Trash2, CheckCircle2, Activity, Database, BarChart3, ChevronRight, Users, FileText, Check, AlertCircle, Sparkles, Brain } from 'lucide-react';
 import { auth, loginWithGoogle, logout, onAuthStateChanged, db, handleFirestoreError, OperationType } from './firebase';
 import type { User } from './firebase';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, Timestamp, getDoc, addDoc, updateDoc } from 'firebase/firestore';
@@ -142,10 +142,36 @@ function NewsCard({
 }: any) {
   const [isFlippedLocal, setIsFlippedLocal] = useState(false);
   const [isReadingMode, setIsReadingMode] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   
   // Use local state if prop is not provided, for flexibility
   const flipped = isFlipped !== undefined ? isFlipped : isFlippedLocal;
   const setFlipped = setIsFlipped !== undefined ? setIsFlipped : setIsFlippedLocal;
+
+  const fetchAiAnalysis = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (aiAnalysis || isAnalyzing) return;
+    
+    setIsAnalyzing(true);
+    try {
+      const res = await fetch("/api/ai/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: currentItem.title,
+          summary: currentItem.summary,
+          content: "" // We could pass more if we had it
+        })
+      });
+      const data = await res.json();
+      if (data.analysis) setAiAnalysis(data.analysis);
+    } catch (e) {
+      console.error("AI Analysis failed:", e);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   const getIframeUrl = (url: string) => {
     const secureUrl = url.startsWith('http://') ? url.replace('http://', 'https://') : url;
@@ -290,9 +316,49 @@ function NewsCard({
                 className="relative"
               >
                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-pink-500 to-purple-600 shadow-[0_0_10px_rgba(236,72,153,0.5)]" />
-                <p className="text-lg md:text-xl text-white/90 font-medium leading-tight pl-6 drop-shadow-md italic line-clamp-8 max-w-md">
-                  {currentItem.summary}
-                </p>
+                
+                <div className="pl-6 flex flex-col gap-4">
+                  {/* AI Analysis Trigger */}
+                  {!aiAnalysis && (
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={fetchAiAnalysis}
+                      disabled={isAnalyzing}
+                      className="flex items-center gap-2 w-fit px-3 py-1.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/30 transition-all group/ai"
+                    >
+                      <Sparkles className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-pulse' : 'group-hover/ai:rotate-12 transition-transform'}`} />
+                      <span className="text-[9px] font-bold uppercase tracking-widest">
+                        {isAnalyzing ? 'Analisi in corso...' : 'Scopri AI Insight'}
+                      </span>
+                    </motion.button>
+                  )}
+
+                  <AnimatePresence>
+                    {aiAnalysis && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        className="p-4 bg-indigo-950/40 border border-indigo-500/30 rounded-2xl backdrop-blur-md relative overflow-hidden group/aismart"
+                      >
+                         <div className="flex items-center gap-2 mb-2">
+                           <Brain className="w-3.5 h-3.5 text-indigo-400" />
+                           <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">SmartInfo AI Editor</span>
+                         </div>
+                         <div className="text-xs md:text-sm text-indigo-100/90 leading-relaxed font-medium whitespace-pre-line max-h-[180px] overflow-y-auto pr-2 custom-scrollbar">
+                           {aiAnalysis}
+                         </div>
+                         <div className="absolute top-0 right-0 p-2 opacity-20">
+                            <Sparkles className="w-8 h-8 text-indigo-400 rotate-12" />
+                         </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <p className="text-lg md:text-xl text-white/90 font-medium leading-tight drop-shadow-md italic line-clamp-4 max-w-md">
+                    {currentItem.summary}
+                  </p>
+                </div>
               </motion.div>
 
               <motion.div
@@ -994,93 +1060,47 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
-  // Fetch Real News Feeds using the new backend proxy for optimal image/video extraction
-  // Fetch Real News Feeds using the dynamic sources from Admin Panel
-  const fetchSingleFeed = async (source: any) => {
+  // Fetch Real News Feeds using the unified high-performance server aggregator
+  const fetchAllFeeds = async (forceRefresh = false) => {
+    setLoading(true);
+    
+    // Attempt to load from localStorage cache for instant UI startup
+    // DEEP RESET: If cache is older than 3 days, ignore it to force fresh data for AdSense
+    if (!forceRefresh) {
+      const cachedNews = localStorage.getItem('cachedNews');
+      const nowTs = Date.now();
+      const threeDaysAgo = nowTs - (3 * 24 * 60 * 60 * 1000);
+
+      if (cachedNews) {
+        try {
+          const parsedCache = JSON.parse(cachedNews);
+          const firstItemTs = parsedCache[0]?.timestamp || 0;
+          
+          if (firstItemTs < threeDaysAgo) {
+            console.log("[Cache] Old cache detected, blowing it away...");
+            localStorage.removeItem('cachedNews');
+          } else if (newsItems.length === 0) {
+            setNewsItems(parsedCache.map((item: NewsItem) => ({...item, rnd: Math.random()})));
+            setLoading(false);
+          }
+        } catch (e) { }
+      }
+    }
+
     try {
-      const response = await fetch(`/api/news?url=${encodeURIComponent(source.url)}&category=${encodeURIComponent(source.cat)}&source=${encodeURIComponent(source.name)}`);
+      const response = await fetch(`/api/news${forceRefresh ? '?refresh=true' : ''}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const items = await response.json();
-      return (items as NewsItem[]).map(item => ({...item, rnd: Math.random()}));
-    } catch (e) {
-      console.error(`Error fetching feed ${source.name}:`, e);
-      return [];
-    }
-  };
-
-  const fetchAllFeeds = async () => {
-    // Attempt to load from cache
-    const cachedNews = localStorage.getItem('cachedNews');
-    if (cachedNews && newsItems.length === 0) {
-      try {
-        const parsedCache = JSON.parse(cachedNews);
-        if (parsedCache && parsedCache.length > 0) {
-          setNewsItems(parsedCache.map((item: NewsItem) => ({...item, rnd: Math.random()})));
-          setLoading(false);
-        }
-      } catch (e) { }
-    } else {
-    setLoading(true);
-    // Safety check: if we have NO sources at all, use local FEEDS immediately to satisfy user
-    if (newsSources.length === 0) {
-      setNewsSources(FEEDS as any[]);
-      // Continue execution with local feeds immediately
-    }
-
-    try {
-      const activeSources = newsSources.length > 0 ? newsSources : FEEDS;
       
-        // 1. Uniform Initial Loading: Load the FIRST feed from EACH category initially
-        // to ensure the initial "all" view is assorted and random
-        const categoriesToLoad = CATEGORIES.filter(c => c.id !== 'all');
-        const firstFeeds = categoriesToLoad.map(cat => 
-          activeSources.filter((f: any) => f.cat === cat.label).sort(() => Math.random() - 0.5)[0]
-        ).filter(Boolean);
-        
-        // Add some strictly random ones too
-        const randomBatch = activeSources.sort(() => Math.random() - 0.5).slice(0, 5);
-        const combinedInitial = [...new Set([...firstFeeds, ...randomBatch])];
-          
-        const processFeed = async (source: any) => {
-          if (source.active === false) return; // Skip inactive sources
-          try {
-            const items = await fetchSingleFeed(source);
-            if (items.length > 0) {
-              setNewsItems(prev => {
-                const existingIds = new Set(prev.map(item => item.id));
-                const newItems = items.filter(item => !existingIds.has(item.id));
-                if (newItems.length > 0) {
-                   // Time-shifted Shuffle: Sort by date but inject noise
-                   // This keeps news roughly chronological but mixes them up beautifully
-                   const combined = [...prev, ...newItems];
-                   return combined.sort((a, b) => {
-                     const aMod = a.timestamp + (Math.random() - 0.5) * 3.6e6; // 1 hour variance
-                     const bMod = b.timestamp + (Math.random() - 0.5) * 3.6e6;
-                     return bMod - aMod;
-                   });
-                }
-                return prev;
-              });
-            }
-          } catch (e) {
-            console.error(`Process feed failed for ${source.name}:`, e);
-          }
-        };
-
-        // Load initial assorted batch
-        await Promise.all(combinedInitial.map(processFeed));
-        setLoading(false); 
-
-        // Load the rest in background with staggered delays
-        const loadedUrls = new Set(combinedInitial.map(f => f.url));
-        const remainingFeeds = activeSources.filter(s => !loadedUrls.has(s.url) && s.active !== false); // Filter active
-        remainingFeeds.forEach((source, idx) => {
-          setTimeout(() => processFeed(source), 2000 + (idx * 1500));
-        });
-      } catch (e) {
-        console.error("Fetch all feeds failed:", e);
-        setLoading(false);
-      }
+      const processedItems = (items as NewsItem[]).map(item => ({...item, rnd: Math.random()}));
+      setNewsItems(processedItems);
+      
+      // Save top 100 to local cache for next startup
+      localStorage.setItem('cachedNews', JSON.stringify(processedItems.slice(0, 100)));
+    } catch (e) {
+      console.error("Unified fetch failed:", e);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1101,33 +1121,11 @@ export default function App() {
     }
   }, [newsItems]);
 
+  // Combined Category Filter (Now super-fast with pre-loaded unified feed)
   useEffect(() => {
-    if (selectedCategory !== 'all' && !showFavoritesOnly && newsSources.length > 0) {
-      const catNews = newsItems.filter(item => 
-        item.category.toLowerCase().includes(selectedCategory.toLowerCase()) ||
-        selectedCategory.toLowerCase().includes(item.category.toLowerCase())
-      );
-      if (catNews.length < 5) {
-        const sources = newsSources.filter(f => 
-          f.cat.toLowerCase().includes(selectedCategory.toLowerCase()) ||
-          selectedCategory.toLowerCase().includes(f.cat.toLowerCase())
-        );
-        sources.forEach(async (source) => {
-          const items = await fetchSingleFeed(source);
-          setNewsItems(prev => {
-            const existingIds = new Set(prev.map(item => item.id));
-            const newItems = items.filter(item => !existingIds.has(item.id));
-            const combined = [...prev, ...newItems];
-            return combined.sort((a, b) => {
-               const aMod = a.timestamp + (Math.random() - 0.5) * 7.2e6; // 2 hour variance for category deep dives
-               const bMod = b.timestamp + (Math.random() - 0.5) * 7.2e6;
-               return bMod - aMod;
-            });
-          });
-        });
-      }
-    }
-  }, [selectedCategory, showFavoritesOnly, newsSources]);
+    setCurrentIndex(0); // Reset scroll to top on category change
+    setIsFlipped(false);
+  }, [selectedCategory, showFavoritesOnly]);
 
   const toggleFavorite = async (news: NewsItem) => {
     if (!user) {
@@ -1801,6 +1799,16 @@ export default function App() {
                   )}
                 </AnimatePresence>
               )}
+
+              <footer className="absolute bottom-[20px] left-10 z-[110] hidden md:flex items-center gap-6">
+                <div className="flex items-center gap-4 text-[9px] font-bold uppercase tracking-widest text-white/20">
+                  <a href="/privacy" className="hover:text-white/60 transition-colors">Privacy Policy</a>
+                  <span className="w-1 h-1 rounded-full bg-white/10" />
+                  <a href="/terms" className="hover:text-white/60 transition-colors">Termini</a>
+                  <span className="w-1 h-1 rounded-full bg-white/10" />
+                  <a href="/contacts" className="hover:text-white/60 transition-colors">Contatti</a>
+                </div>
+              </footer>
             </div>
           </div>
         </div>
