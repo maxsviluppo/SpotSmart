@@ -1,3 +1,10 @@
+if (typeof window === 'undefined') {
+  try {
+    const dummyStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {}, clear: () => {}, length: 0, key: () => null };
+    Object.defineProperty(globalThis, 'localStorage', { value: dummyStorage, writable: true, configurable: true });
+  } catch (e) {}
+}
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -6,9 +13,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Newspaper, TrendingUp, Clock, Share2, ExternalLink, Menu, X, Settings, User as UserIcon, Heart, LogOut, BookOpen, LayoutGrid, Globe, Cpu, Music, Gamepad2, Palette, FlaskConical, Search, RefreshCw, Info, Send, Trophy, MapPin, Plus, Stethoscope, Shield, Lock, Save, Trash2, CheckCircle2, Activity, Database, BarChart3, ChevronRight, Users, FileText, Check, AlertCircle, Sparkles, Brain } from 'lucide-react';
-import { auth, loginWithGoogle, logout, onAuthStateChanged, db, handleFirestoreError, OperationType } from './firebase';
+import { auth, loginWithGoogle, logout, onAuthStateChanged, db, handleFirestoreError, OperationType, collection, doc, setDoc, deleteDoc, onSnapshot, query, where, Timestamp, getDoc, addDoc, updateDoc } from './firebase';
 import type { User } from './firebase';
-import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, Timestamp, getDoc, addDoc, updateDoc } from 'firebase/firestore';
 import { FEEDS } from './feeds';
 
 interface NewsItem {
@@ -726,7 +732,7 @@ export default function App() {
 
   useEffect(() => {
     const timer = setTimeout(() => setShowSplash(false), 500);
-    const consent = localStorage.getItem('cookieConsent');
+    const consent = typeof window !== 'undefined' ? localStorage.getItem('cookieConsent') : null;
     if (!consent) {
       setTimeout(() => setShowCookieBanner(true), 4000);
     }
@@ -744,7 +750,7 @@ export default function App() {
           );
           await Promise.all(promises);
         } catch (e) {
-          console.error("Firestore SEO seed failed:", e);
+          if (e && !String(e).includes('permission')) console.error("Firestore SEO seed failed:", e);
         }
         setSeoConfigs(defaultSeo); // Ensure UI gets it immediately regardless of DB error
       } else {
@@ -765,13 +771,13 @@ export default function App() {
           });
           if (missingFound) await Promise.all(missingPromises);
         } catch (e) {
-          console.error("Firestore SEO missing seed failed:", e);
+          if (e && !String(e).includes('permission')) console.error("Firestore SEO missing seed failed:", e);
         }
         
         setSeoConfigs(configs);
       }
     }, (error) => {
-      console.error("SEO onSnapshot error:", error);
+      if (error && !String(error).includes('permission')) console.error("SEO onSnapshot error:", error);
       setSeoConfigs(defaultSeo);
     });
     return () => unsub();
@@ -804,7 +810,7 @@ export default function App() {
           const promises = FEEDS.map(source => setDoc(doc(db, 'news_sources', source.id), { ...source, active: true }));
           await Promise.all(promises);
         } catch (e) {
-          console.error("Firestore seed failed (likely permission rules):", e);
+          if (e && !String(e).includes('permission')) console.error("Firestore seed failed (likely permission rules):", e);
         }
 
         // 3. Sync with local server API
@@ -828,7 +834,7 @@ export default function App() {
         setNewsSources(sources);
       }
     }, (error) => {
-      console.error("Firestore onSnapshot error:", error);
+      if (error && !String(error).includes('permission')) console.error("Firestore onSnapshot error:", error);
       // Fallback to local sources if Firestore is entirely unreachable/blocked
       fetchLocalSources();
     });
@@ -1068,7 +1074,7 @@ export default function App() {
     
     // Attempt to load from localStorage cache for instant UI startup
     // DEEP RESET: If cache is older than 3 days, ignore it to force fresh data for AdSense
-    if (!forceRefresh) {
+    if (!forceRefresh && typeof window !== 'undefined') {
       const cachedNews = localStorage.getItem('cachedNews');
       const nowTs = Date.now();
       const threeDaysAgo = nowTs - (3 * 24 * 60 * 60 * 1000);
@@ -1103,7 +1109,9 @@ export default function App() {
       }
       
       // Save top 100 to local cache for next startup
-      localStorage.setItem('cachedNews', JSON.stringify(processedItems.slice(0, 100)));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('cachedNews', JSON.stringify(processedItems.slice(0, 100)));
+      }
     } catch (e) {
       console.error("Unified fetch failed:", e);
     } finally {

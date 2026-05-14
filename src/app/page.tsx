@@ -1,5 +1,5 @@
 import React from 'react';
-import SpotSmartApp from '@/components/SpotSmartApp';
+import SpotSmartAppWrapper from '@/components/SpotSmartAppWrapper';
 import Parser from 'rss-parser';
 
 // Revalida la pagina in cache ogni 5 minuti per garantire tempi di risposta fulminei ai bot AdSense
@@ -54,7 +54,7 @@ export default async function Home() {
   return (
     <>
       {/* L'applicazione Client Principale con interfaccia utente interattiva */}
-      <SpotSmartApp />
+      <SpotSmartAppWrapper />
 
       {/* Contenuto semantico Server-Side Rendered invisibile all'utente ma letto immediatamente dai bot di Google AdSense per approvare il sito ed eliminare "Contenuti di scarso valore" */}
       <div className="sr-only" aria-hidden="true">

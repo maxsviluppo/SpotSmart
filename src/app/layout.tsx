@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SpotSmart Notizie | www.piazzacardarelli.com",
+  title: "SpotSmart Notizie",
   description: "Il tuo Hub Intelligente di Informazione in tempo reale. Cronaca, Mondo, Tecnologia, Finanza e Scienza in un'unica piattaforma innovativa.",
 };
 
