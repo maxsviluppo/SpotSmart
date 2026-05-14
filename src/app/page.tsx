@@ -12,38 +12,39 @@ async function getSsrNewsForAdSense() {
     { url: "https://www.ilsole24ore.com/rss/finanza.xml", name: "Il Sole 24 Ore", cat: "Finanza" }
   ];
 
-  const parser = new Parser();
   const articles: Array<{ title: string; summary: string; source: string }> = [];
 
-  for (const source of topSources) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-      const res = await fetch(source.url, { 
-        signal: controller.signal, 
-        headers: { 'User-Agent': 'Mozilla/5.0' },
-        next: { revalidate: 300 }
-      });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        const xml = await res.text();
-        // Semplice parsing per evitare blocchi XML complessi
-        const feed = await parser.parseString(xml);
-        (feed.items || []).slice(0, 5).forEach(item => {
-          if (item.title) {
-            articles.push({
-              title: item.title,
-              summary: (item.contentSnippet || item.summary || "").substring(0, 350) + "...",
-              source: source.name
-            });
-          }
+  try {
+    const parser = new Parser();
+    for (const source of topSources) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const res = await fetch(source.url, { 
+          signal: controller.signal, 
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+          next: { revalidate: 300 }
         });
-      }
-    } catch (e) {
-      // Ignora silenziosamente errori dei singoli feed per non interrompere il rendering
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          let xml = await res.text();
+          // Pre-sanificazione robusta per feed fragili
+          xml = xml.replace(/&(?!(?:[a-zA-Z0-9]+|#[0-9]+|#x[0-9a-fA-F]+);)/g, '&amp;');
+          const feed = await parser.parseString(xml);
+          (feed.items || []).slice(0, 5).forEach(item => {
+            if (item.title) {
+              articles.push({
+                title: item.title,
+                summary: (item.contentSnippet || item.summary || "").substring(0, 350) + "...",
+                source: source.name
+              });
+            }
+          });
+        }
+      } catch (e) {}
     }
-  }
+  } catch (e) {}
 
   return articles;
 }

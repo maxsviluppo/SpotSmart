@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import Parser from 'rss-parser';
-import * as cheerio from 'cheerio';
 import { FEEDS } from '@/components/feeds';
 
 export const dynamic = 'force-dynamic';
@@ -24,7 +23,17 @@ const parser = new Parser({
 });
 
 function cleanXmlContent(xml: string): string {
-  let cleaned = xml.replace(/&(?!(?:[a-zA-Z0-9]+|#[0-9]+|#x[0-9a-fA-F]+);)/g, '&amp;');
+  let cleaned = xml;
+  // 1. Fix unescaped ampersands in titles/descriptions
+  cleaned = cleaned.replace(/&(?!(?:[a-zA-Z0-9]+|#[0-9]+|#x[0-9a-fA-F]+);)/g, '&amp;');
+  
+  // 2. Fix unquoted attributes
+  cleaned = cleaned.replace(/<([a-zA-Z0-9:_.-]+)\s+([^>]*?)\s*>/g, (match, tagName, attrs) => {
+    const sanitizedAttrs = attrs.replace(/([a-zA-Z0-9:_.-]+)(?!=)(\s|$)/g, '$1=""$2');
+    return `<${tagName} ${sanitizedAttrs}>`;
+  });
+
+  // 3. Ensure HTML content within RSS tags is wrapped in CDATA if it contains tags
   cleaned = cleaned.replace(/<(title|description|content:encoded)>([\s\S]*?)<\/\1>/g, (match, tag, content) => {
     if (content.includes('<') && !content.trim().startsWith('<![CDATA[')) {
       return `<${tag}><![CDATA[${content}]]></${tag}>`;
@@ -38,19 +47,33 @@ async function fetchMetaInfo(url: string) {
   if (!url) return { image: null, video: null };
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000); 
+    const timeoutId = setTimeout(() => controller.abort(), 4000); 
     const response = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0' } });
     clearTimeout(timeoutId);
     if (!response.ok) return { image: null, video: null };
     const html = await response.text();
-    const $ = cheerio.load(html);
-    let image = $('meta[property="og:image"]').attr('content') || $('meta[name="twitter:image"]').attr('content');
-    let video = $('meta[property="og:video:url"]').attr('content') || $('meta[name="twitter:player"]').attr('content') || $('iframe[src*="youtube.com"]').attr('src');
+    
+    // Estrazione Regex pura ad altissime prestazioni per evitare crash di Cheerio SSR
+    const ogImageMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) || 
+                         html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i) ||
+                         html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i);
+    let image = ogImageMatch ? ogImageMatch[1] : null;
+
+    const ogVideoMatch = html.match(/<meta[^>]+property=["']og:video:url["'][^>]+content=["']([^"']+)["']/i) ||
+                         html.match(/<meta[^>]+property=["']og:video["'][^>]+content=["']([^"']+)["']/i) ||
+                         html.match(/<iframe[^>]+src=["'](https:\/\/www\.youtube\.com\/embed\/[^"']+)["']/i);
+    let video = ogVideoMatch ? ogVideoMatch[1] : null;
+
     if (video && video.includes('youtube.com')) {
        const ytId = video.match(/(?:v=|embed\/|watch\?v=)([a-zA-Z0-9_-]{11})/)?.[1];
        if (ytId) video = `https://www.youtube.com/embed/${ytId}`;
     }
-    return { image: image || null, video: video || null };
+    
+    let finalImage = image || null;
+    if (finalImage && !finalImage.startsWith('http')) {
+      try { finalImage = new URL(finalImage, url).href; } catch {}
+    }
+    return { image: finalImage, video: video || null };
   } catch (e) { return { image: null, video: null }; }
 }
 
@@ -88,13 +111,19 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Select top active feeds for real-time aggregation speed
-    const sources = FEEDS.slice(0, 40);
+    // Select all active feeds for comprehensive real-time aggregation
+    const sources = FEEDS;
     const feedPromises = sources.map(async (source: any) => {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000); 
+      const timeoutId = setTimeout(() => controller.abort(), 5000); 
       try {
-        const response = await fetch(source.url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const response = await fetch(source.url, { 
+          signal: controller.signal, 
+          headers: { 
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            'Accept': 'application/rss+xml, text/xml, */*'
+          } 
+        });
         clearTimeout(timeoutId);
         if (!response.ok) return [];
         const xml = cleanXmlContent(await response.text());
@@ -128,10 +157,12 @@ export async function GET(request: Request) {
     
     const sorted = allItems.sort((a,b) => b.timestamp - a.timestamp).slice(0, 400);
     
-    serverNewsCache = sorted;
-    lastServerFetchTime = now;
-    return NextResponse.json(sorted);
+    if (sorted.length > 0) {
+      serverNewsCache = sorted;
+      lastServerFetchTime = now;
+    }
+    return NextResponse.json(sorted.length > 0 ? sorted : serverNewsCache);
   } catch (e) { 
-    return NextResponse.json(serverNewsCache); 
+    return NextResponse.json(serverNewsCache.length > 0 ? serverNewsCache : []); 
   }
 }

@@ -98,5 +98,6 @@ export const FEEDS = [
   { id: "si-087", url: "https://www.androidworld.it/tag/giochi-android/feed/", cat: "Tecnologia", name: "AndroidWorld IT" },
   { id: "si-088", url: "https://www.iphoneitalia.com/tag/giochi-iphone/feed/", cat: "Tecnologia", name: "iPhoneItalia IT" },
   { id: "si-089", url: "https://www.macitynet.it/ios/giochi-ios/feed/", cat: "Tecnologia", name: "Macitynet IT" },
-  { id: "si-090", url: "https://9to5google.com/guides/cloud-gaming/feed/", cat: "Tecnologia", name: "9to5Google Cloud" }
+  { id: "si-090", url: "https://9to5google.com/guides/cloud-gaming/feed/", cat: "Tecnologia", name: "9to5Google Cloud" },
+  { id: "si-091", url: "https://www.piazzacardarelli.com/blog-feed.xml", cat: "Regioni", name: "Piazza Cardarelli" }
 ];

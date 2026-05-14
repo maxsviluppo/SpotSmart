@@ -269,9 +269,9 @@ function NewsCard({
                 />
               </div>
             )}
-            <div className="absolute inset-x-0 bottom-[-5px] h-[80%] z-20 pointer-events-none bg-gradient-to-t from-black via-black/95 to-transparent opacity-100" />
-            <div className="absolute inset-x-0 bottom-[-5px] h-1/2 z-20 pointer-events-none bg-gradient-to-t from-black to-transparent opacity-100" />
-            <div className="absolute inset-0 z-20 pointer-events-none shadow-[inset_0_-255px_200px_-100px_rgba(0,0,0,1)]" />
+            <div className="absolute inset-x-0 bottom-[-35px] h-[60%] z-20 pointer-events-none bg-gradient-to-t from-black via-black/95 to-transparent opacity-100" />
+            <div className="absolute inset-x-0 bottom-[-35px] h-1/2 z-20 pointer-events-none bg-gradient-to-t from-black to-transparent opacity-100" />
+            <div className="absolute inset-0 z-20 pointer-events-none shadow-[inset_0_-135px_200px_-100px_rgba(0,0,0,1)]" />
           </div>
 
           <div className="relative z-20 flex-1 flex flex-col justify-end p-8 md:p-16 pt-0 pb-28 md:pb-36 mt-0">
@@ -291,7 +291,7 @@ function NewsCard({
               className="max-w-2xl space-y-4"
             >
               <div className="overflow-hidden">
-                <h2 className="text-3xl md:text-5xl font-black text-white leading-tight tracking-tighter uppercase flex flex-wrap gap-x-3">
+                <h2 className="text-[23px] md:text-[40px] font-black text-white leading-tight tracking-tighter uppercase flex flex-wrap gap-x-3">
                   {currentItem.title.split(' ').map((word: string, i: number) => (
                     <motion.span
                       key={i}
@@ -593,7 +593,7 @@ export default function App() {
   const [adminError, setAdminError] = useState('');
   const [isSavingSeo, setIsSavingSeo] = useState(false);
   const [analyticsConfig, setAnalyticsConfig] = useState<any>({ trackingId: '', enabled: true, verificationTag: '' });
-  const [adsenseConfig, setAdsenseConfig] = useState<any>({ enabled: false, client: '', script: '', adsTxt: '', metaTag: '' });
+  const [adsenseConfig, setAdsenseConfig] = useState<any>({ enabled: true, client: 'ca-pub-1385801472165821', script: '', adsTxt: '', metaTag: '' });
   const [isSavingAdsense, setIsSavingAdsense] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{type: 'success' | 'error' | 'info' | null, message: string}>({ type: null, message: '' });
   const [realTraffic, setRealTraffic] = useState<{today: number, total: number}>({ today: 0, total: 0 });
@@ -1218,18 +1218,33 @@ export default function App() {
     }
   };
 
+  const activeCategories = useMemo(() => {
+    return CATEGORIES.filter(cat => {
+      if (cat.id === 'all') return true;
+      return (newsSources || []).some(src => 
+        src.active !== false && 
+        src.cat?.toLowerCase() === cat.label.toLowerCase()
+      );
+    });
+  }, [newsSources]);
+
   const displayedNews = useMemo(() => {
     let base = showFavoritesOnly 
       ? Object.values(favorites).map((f: any) => ({ ...f, id: f.newsId })).sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)) 
       : newsItems;
 
     const filtered = base.filter(item => {
-      // If showing favorites from the HEART menu, we ignore category unless specifically searching
+      // 1. Controllo di presenza media (esclude articoli vuoti/senza copertina)
+      const hasMedia = !!item.videoUrl || (!!item.imageUrl && item.imageUrl.trim() !== '');
+      if (!hasMedia) return false;
+
+      // 2. Filtro Categoria
       const category = item.category || 'Generale';
       const matchesCategory = showFavoritesOnly || selectedCategory === 'all' || 
         category.toLowerCase().includes(selectedCategory.toLowerCase()) || 
         selectedCategory.toLowerCase().includes(category.toLowerCase());
       
+      // 3. Filtro Ricerca testuale
       const matchesSearch = !searchQuery || 
         (item.title && item.title.toLowerCase().includes(searchQuery.toLowerCase())) || 
         (item.summary && item.summary.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -1523,25 +1538,24 @@ export default function App() {
                         <motion.div 
                           key={i} 
                           variants={{
-                            hidden: { opacity: 0, scale: 0.4, y: 40, x: 20, rotate: -20 },
+                            hidden: { opacity: 0, scale: 0.6, y: 30, x: 15 },
                             show: { 
                               opacity: 1, 
                               scale: 1, 
                               y: 0,
                               x: 0,
-                              rotate: 0,
                               transition: { 
                                 type: "spring", 
-                                stiffness: 500, 
-                                damping: 30,
-                                mass: 0.5
+                                stiffness: 350, 
+                                damping: 24,
+                                mass: 0.6
                               }
                             },
                             exit: { 
                               opacity: 0, 
-                              scale: 0.4, 
+                              scale: 0.6, 
                               y: 20,
-                              transition: { duration: 0.2, ease: "easeIn" }
+                              transition: { duration: 0.15, ease: "easeOut" }
                             }
                           }}
                           className="relative group flex justify-end"
@@ -1572,10 +1586,10 @@ export default function App() {
                           <AnimatePresence>
                             {isCategoryMenuOpen && (
                               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-                                   {CATEGORIES.map((cat, ci, arr) => {
+                                   {activeCategories.map((cat, ci, arr) => {
                                    const startAngle = (Math.PI * 1.05); 
                                    const endAngle = (Math.PI * 0.5); 
-                                   const angle = startAngle + ((endAngle - startAngle) * (ci / (arr.length - 1)));
+                                   const angle = startAngle + ((endAngle - startAngle) * (ci / Math.max(1, arr.length - 1)));
                                    const radius = 220;
                                    const x = Math.cos(angle) * radius;
                                    const y = Math.sin(angle) * radius;
@@ -1587,11 +1601,11 @@ export default function App() {
                                        animate={{ x, y, opacity: 1, scale: 1 }}
                                        exit={{ x: 0, y: 0, opacity: 0, scale: 0 }}
                                        transition={{ 
-                                         delay: ci * 0.04, 
+                                         delay: ci * 0.03, 
                                          type: 'spring', 
-                                         stiffness: 280, 
-                                         damping: 28,
-                                         mass: 0.6
+                                         stiffness: 320, 
+                                         damping: 22,
+                                         mass: 0.5
                                        }}
                                        onClick={(e) => {
                                          e.stopPropagation();
