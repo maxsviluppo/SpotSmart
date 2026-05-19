@@ -1,43 +1,57 @@
 import React from 'react';
 import SpotSmartAppWrapper from '@/components/SpotSmartAppWrapper';
 import Parser from 'rss-parser';
+import { FEEDS } from '@/components/feeds';
 
 // Revalida la pagina in cache ogni 5 minuti per garantire tempi di risposta fulminei ai bot AdSense
 export const revalidate = 300;
 
-async function getSsrNewsForAdSense() {
-  const topSources = [
-    { url: "https://www.ansa.it/sito/ansait_rss.xml", name: "ANSA", cat: "Cronaca" },
-    { url: "https://www.hdblog.it/feed/", name: "HD Blog", cat: "Tecnologia" },
-    { url: "https://www.ilsole24ore.com/rss/finanza.xml", name: "Il Sole 24 Ore", cat: "Finanza" }
-  ];
+const getAppUrl = () => {
+  if (process.env.APP_URL) return process.env.APP_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3000";
+};
 
-  const articles: Array<{ title: string; summary: string; source: string }> = [];
+function createSlug(text: string): string {
+  return (text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+}
 
+async function fallbackDirectParse(): Promise<any[]> {
+  const articles: any[] = [];
   try {
     const parser = new Parser();
+    // Parse top 6 sources directly to keep server response fast
+    const topSources = FEEDS.slice(0, 6);
     for (const source of topSources) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
         const res = await fetch(source.url, { 
           signal: controller.signal, 
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-          next: { revalidate: 300 }
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
         });
         clearTimeout(timeoutId);
 
         if (res.ok) {
           let xml = await res.text();
-          // Pre-sanificazione robusta per feed fragili
           xml = xml.replace(/&(?!(?:[a-zA-Z0-9]+|#[0-9]+|#x[0-9a-fA-F]+);)/g, '&amp;');
           const feed = await parser.parseString(xml);
-          (feed.items || []).slice(0, 5).forEach(item => {
+          (feed.items || []).slice(0, 6).forEach(item => {
             if (item.title) {
               articles.push({
+                id: item.guid || item.link || Math.random().toString(),
                 title: item.title,
-                summary: (item.contentSnippet || item.summary || "").substring(0, 350) + "...",
-                source: source.name
+                url: item.link || "",
+                slug: createSlug(item.title),
+                summary: (item.contentSnippet || item.summary || "").substring(0, 280) + "...",
+                category: source.cat || "Generale",
+                source: source.name || "Unknown",
+                imageUrl: `https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&q=80&w=1600`,
+                time: item.pubDate ? new Date(item.pubDate).toLocaleTimeString() : new Date().toLocaleTimeString(),
+                timestamp: item.pubDate ? new Date(item.pubDate).getTime() : Date.now()
               });
             }
           });
@@ -45,31 +59,37 @@ async function getSsrNewsForAdSense() {
       } catch (e) {}
     }
   } catch (e) {}
+  return articles.sort((a, b) => b.timestamp - a.timestamp);
+}
 
-  return articles;
+async function getInitialNews() {
+  const appUrl = getAppUrl();
+  try {
+    const res = await fetch(`${appUrl}/api/news`, {
+      cache: "no-store",
+      headers: {
+        "Accept": "application/json"
+      }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        return data;
+      }
+    }
+  } catch (error) {
+    console.error("Error fetching RSS news in page.tsx:", error);
+  }
+
+  // Fallback to direct parsing if API call fails
+  console.log("Using direct RSS parsing fallback...");
+  return await fallbackDirectParse();
 }
 
 export default async function Home() {
-  const ssrArticles = await getSsrNewsForAdSense();
+  const initialNews = await getInitialNews();
 
   return (
-    <>
-      {/* L'applicazione Client Principale con interfaccia utente interattiva */}
-      <SpotSmartAppWrapper />
-
-      {/* Contenuto semantico Server-Side Rendered invisibile all'utente ma letto immediatamente dai bot di Google AdSense per approvare il sito ed eliminare "Contenuti di scarso valore" */}
-      <div className="sr-only" aria-hidden="true">
-        <h1>SpotSmart Notizie Live - Aggiornamenti in Tempo Reale</h1>
-        <p>Benvenuti su SpotSmart, la piattaforma di informazione avanzata integrata con intelligenza artificiale per l'analisi critica delle notizie. Di seguito gli ultimi articoli pubblicati dalle principali testate giornalistiche italiane e internazionali.</p>
-        
-        {ssrArticles.map((article, index) => (
-          <article key={index}>
-            <h2>{article.title}</h2>
-            <p>{article.summary}</p>
-            <span>Fonte: {article.source}</span>
-          </article>
-        ))}
-      </div>
-    </>
+    <SpotSmartAppWrapper initialNews={initialNews} />
   );
 }

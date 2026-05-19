@@ -113,10 +113,10 @@ function AdCard({ direction, variants, onNext }: { direction: number; variants: 
           Pubblicità
         </span>
       </div>
-      <div className="w-full flex items-center justify-center" style={{ height: '90vw', maxHeight: '85vh' }}>
+      <div className="w-full h-full flex items-center justify-center">
         <ins
           className="adsbygoogle"
-          style={{ display: 'block', width: '100%', height: '100%' }}
+          style={{ display: 'block', width: '100%', height: '100%', minHeight: '100vh' }}
           data-ad-client="ca-pub-1385801472165821"
           data-ad-slot="auto"
           data-ad-format="auto"
@@ -291,24 +291,32 @@ function NewsCard({
               className="max-w-2xl space-y-4"
             >
               <div className="overflow-hidden">
-                <h2 className="text-[23px] md:text-[40px] font-black text-white leading-tight tracking-tighter uppercase flex flex-wrap gap-x-3">
-                  {currentItem.title.split(' ').map((word: string, i: number) => (
-                    <motion.span
-                      key={i}
-                      variants={{
-                        hidden: { y: "100%", opacity: 0, filter: 'blur(10px)' },
-                        visible: { 
-                          y: 0, 
-                          opacity: 1, 
-                          filter: 'blur(0px)',
-                          transition: { type: "spring", stiffness: 200, damping: 20 }
-                        }
-                      }}
-                      className="inline-block"
-                    >
-                      {word}
-                    </motion.span>
-                  ))}
+                <h2 className="text-[23px] md:text-[40px] font-black text-white leading-tight tracking-tighter uppercase">
+                  <a 
+                    href={`/article/${currentItem.slug}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="hover:text-indigo-400 transition-colors flex flex-wrap gap-x-3"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {currentItem.title.split(' ').map((word: string, i: number) => (
+                      <motion.span
+                        key={i}
+                        variants={{
+                          hidden: { y: "100%", opacity: 0, filter: 'blur(10px)' },
+                          visible: { 
+                            y: 0, 
+                            opacity: 1, 
+                            filter: 'blur(0px)',
+                            transition: { type: "spring", stiffness: 200, damping: 20 }
+                          }
+                        }}
+                        className="inline-block"
+                      >
+                        {word}
+                      </motion.span>
+                    ))}
+                  </a>
                 </h2>
               </div>
               
@@ -422,6 +430,28 @@ function NewsCard({
               >
                 Premi l'immagine per vedere il sito
               </motion.p>
+
+              <motion.div
+                variants={{
+                  hidden: { opacity: 0 },
+                  visible: { 
+                    opacity: 1, 
+                    transition: { delay: 0.9, duration: 0.5 }
+                  }
+                }}
+                className="mt-4"
+              >
+                <a
+                  href={`/article/${currentItem.slug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/30 text-indigo-300 text-xs font-bold uppercase tracking-widest transition-all shadow-[0_0_15px_rgba(99,102,241,0.1)] active:scale-95 hover:border-indigo-400/50"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Leggi Articolo Completo
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </motion.div>
             </motion.div>
           </div>
         </div>
@@ -566,10 +596,10 @@ export const defaultSeo: Record<string, any> = {
   }
 };
 
-export default function App() {
-  const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
+export default function App({ initialNews = [] }: { initialNews?: NewsItem[] }) {
+  const [newsItems, setNewsItems] = useState<NewsItem[]>(initialNews);
   const [favorites, setFavorites] = useState<Record<string, any>>({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(initialNews.length === 0);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -583,7 +613,7 @@ export default function App() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [showCookieBanner, setShowCookieBanner] = useState(false);
-  const [showSplash, setShowSplash] = useState(true);
+  const [showSplash, setShowSplash] = useState(initialNews.length === 0);
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
@@ -848,12 +878,12 @@ export default function App() {
     // Fetch Analytics from Firestore first (always works), fallback to API
     getDoc(doc(db, 'configs', 'analytics'))
       .then(snap => { if (snap.exists()) setAnalyticsConfig(snap.data()); })
-      .catch(() => fetch('/api/admin-analytics').then(r => r.json()).then(setAnalyticsConfig).catch(() => {}));
+      .catch(() => fetch('/api/admin/analytics').then(r => r.json()).then(setAnalyticsConfig).catch(() => {}));
 
     // Fetch AdSense from Firestore first (always works), fallback to API
     getDoc(doc(db, 'configs', 'adsense'))
       .then(snap => { if (snap.exists()) setAdsenseConfig(snap.data()); })
-      .catch(() => fetch('/api/admin-adsense').then(r => r.json()).then(setAdsenseConfig).catch(() => {}));
+      .catch(() => fetch('/api/admin/adsense').then(r => r.json()).then(setAdsenseConfig).catch(() => {}));
   }, []);
 
   const handleAdminLogin = (e: React.FormEvent) => {
@@ -914,16 +944,14 @@ export default function App() {
 
     try {
       // Direct call to local server first since it now handles both disk and cloud sync
-      const res = await fetch('/api/admin/adsense', {
+      await fetch('/api/admin/adsense', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ auth: { username: 'admin', password: 'accessometti' }, data })
-      });
+      }).catch(() => {});
 
-      if (!res.ok) {
-        // Fallback for when running strictly on Vercel without local server
-        await setDoc(doc(db, 'configs', 'adsense'), data);
-      }
+      // Always save to Firestore for persistence
+      await setDoc(doc(db, 'configs', 'adsense'), data);
 
       setAdsenseConfig(data);
       setSaveStatus({
@@ -1133,6 +1161,12 @@ export default function App() {
   }, [loading]);
 
   useEffect(() => {
+    // If we have initial news, use them and set the last seen ID without fetching on mount
+    if (initialNews.length > 0 && newsItems.length === initialNews.length) {
+      setLastSeenId(initialNews[0].id);
+      setLoading(false);
+      return;
+    }
     // Trigger initial load immediately and when sources update
     fetchAllFeeds();
   }, [newsSources?.length]);
@@ -1267,7 +1301,7 @@ export default function App() {
     }
 
     const result: ({ type: 'news', data: NewsItem, id: string } | { type: 'ad', id: string })[] = [];
-    const adFrequency = 6; // One ad every 6 news items
+    const adFrequency = 7; // One ad every 7 news items
     
     displayedNews.forEach((item, index) => {
       result.push({ type: 'news', data: item, id: item.id });
@@ -1279,6 +1313,32 @@ export default function App() {
   }, [displayedNews, adsenseConfig.enabled]);
 
   const currentItem = feedWithAds[currentIndex];
+
+  // Gestione parametro URL SEO per focalizzare un articolo specifico
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const targetSlug = params.get('article');
+    if (targetSlug && feedWithAds.length > 0) {
+      const targetIndex = feedWithAds.findIndex(item => item.type === 'news' && item.data.slug === targetSlug);
+      if (targetIndex !== -1) {
+        setCurrentIndex(targetIndex);
+      }
+    }
+  }, [feedWithAds.length]);
+
+  // Sincronizza l'URL con l'articolo corrente per una perfetta condivisione e SEO
+  useEffect(() => {
+    const currentItem = feedWithAds[currentIndex];
+    if (currentItem && currentItem.type === 'news' && currentItem.data.slug) {
+      const newUrl = `${window.location.pathname}?article=${encodeURIComponent(currentItem.data.slug)}`;
+      window.history.replaceState(null, '', newUrl);
+      document.title = `${currentItem.data.title} | SpotSmart`;
+    } else if (currentItem && currentItem.type === 'ad') {
+      const newUrl = `${window.location.pathname}`;
+      window.history.replaceState(null, '', newUrl);
+      document.title = `Pubblicità | SpotSmart`;
+    }
+  }, [currentIndex, feedWithAds]);
 
   return (
     <div className="h-svh w-full bg-black overflow-hidden relative flex items-center justify-center font-montserrat text-slate-200">
@@ -1974,8 +2034,26 @@ export default function App() {
                   <h4 className="text-indigo-400 font-bold uppercase text-xs tracking-widest mb-4">Cookie Policy</h4>
                   <div className="space-y-4 text-white/60 text-sm leading-relaxed">
                     <p>
-                      Utilizziamo esclusivamente cookie tecnici necessari al corretto funzionamento dell'app e alla memorizzazione delle tue preferenze di sessione.
+                      Utilizziamo cookie tecnici per il funzionamento dell&apos;applicazione e cookie di terze parti per AdSense. Puoi leggere i dettagli completi nella nostra <a href="/cookie" className="text-indigo-400 hover:underline font-bold">Cookie Policy dedicata</a>.
                     </p>
+                  </div>
+                </section>
+
+                <section className="pt-6 border-t border-white/5">
+                  <h4 className="text-indigo-400 font-bold uppercase text-xs tracking-widest mb-4">Collegamenti Rapidi</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <a href="/privacy" className="p-3 bg-white/5 border border-white/10 rounded-2xl text-center text-xs font-bold uppercase tracking-wider text-white hover:bg-indigo-500/20 hover:border-indigo-500/30 transition-all">
+                      Privacy Policy
+                    </a>
+                    <a href="/cookie" className="p-3 bg-white/5 border border-white/10 rounded-2xl text-center text-xs font-bold uppercase tracking-wider text-white hover:bg-indigo-500/20 hover:border-indigo-500/30 transition-all">
+                      Cookie Policy
+                    </a>
+                    <a href="/contacts" className="p-3 bg-white/5 border border-white/10 rounded-2xl text-center text-xs font-bold uppercase tracking-wider text-white hover:bg-indigo-500/20 hover:border-indigo-500/30 transition-all">
+                      Contatti
+                    </a>
+                    <a href="/about" className="p-3 bg-white/5 border border-white/10 rounded-2xl text-center text-xs font-bold uppercase tracking-wider text-white hover:bg-indigo-500/20 hover:border-indigo-500/30 transition-all">
+                      Chi Siamo
+                    </a>
                   </div>
                 </section>
 
@@ -2025,7 +2103,7 @@ export default function App() {
                 </div>
                 <div className="space-y-2">
                   <p className="text-sm text-white/80 font-medium leading-normal">
-                    Utilizziamo i cookie per migliorare la tua esperienza. <button onClick={() => {setIsInfoOpen(true); setIsMenuOpen(false);}} className="text-indigo-400 underline underline-offset-4 hover:text-indigo-300">Leggi di più</button>
+                    Utilizziamo i cookie per migliorare la tua esperienza. <a href="/cookie" className="text-indigo-400 underline underline-offset-4 hover:text-indigo-300">Leggi di più</a>
                   </p>
                 </div>
               </div>
@@ -2777,6 +2855,34 @@ export default function App() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Footer crawlable per Googlebot ed elegante per utenti */}
+      <footer className="sr-only" aria-hidden="false">
+        <h2>SpotSmart - L&apos;informazione in tempo reale</h2>
+        <p>Notizie aggregate in tempo reale da ANSA, Il Sole 24 Ore, DDay.it, Focus.it, NASA, Nature, e altro.</p>
+        <div>
+          <h3>Mappa del sito e Categorie</h3>
+          <ul>
+            <li><a href="/privacy">Privacy Policy</a></li>
+            <li><a href="/cookie">Cookie Policy</a></li>
+            <li><a href="/contacts">Contatti</a></li>
+            <li><a href="/about">Chi Siamo</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3>Ultimi Articoli Indicizzabili</h3>
+          <ul>
+            {newsItems.slice(0, 100).map(item => (
+              <li key={item.id}>
+                <a href={`/article/${item.slug}`} target="_blank" rel="noopener noreferrer">{item.title}</a>
+                <p>{item.summary}</p>
+                <span>Fonte: {item.source} | Categoria: {item.category}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <p>© 2026 SpotSmart. Tutti i diritti riservati. Ideato e gestito da Castro Massimo. Contatto: castromassimo@gmail.com</p>
+      </footer>
     </div>
   );
 }

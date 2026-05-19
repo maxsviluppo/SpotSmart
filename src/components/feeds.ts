@@ -24,7 +24,6 @@ export const FEEDS = [
   { id: "si-022", url: "https://www.meteo.it/rss/news", cat: "Scienza", name: "Meteo.it" },
   { id: "si-023", url: "https://www.media.inaf.it/feed/", cat: "Scienza", name: "INAF" },
   // Tecnologia - IT
-  { id: "si-024", url: "https://www.hdblog.it/feed/", cat: "Tecnologia", name: "HD Blog" },
   { id: "si-025", url: "https://www.dday.it/rss", cat: "Tecnologia", name: "DDay.it" },
   { id: "si-026", url: "https://www.tomshw.it/rss/", cat: "Tecnologia", name: "Tom's Hardware" },
   { id: "si-027", url: "https://www.wired.it/feed/", cat: "Tecnologia", name: "Wired IT" },

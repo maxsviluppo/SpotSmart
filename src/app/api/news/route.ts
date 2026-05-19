@@ -22,6 +22,13 @@ const parser = new Parser({
   }
 });
 
+function createSlug(text: string): string {
+  return (text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+}
+
 function cleanXmlContent(xml: string): string {
   let cleaned = xml;
   // 1. Fix unescaped ampersands in titles/descriptions
@@ -139,6 +146,7 @@ export async function GET(request: Request) {
             id: item.guid || item.link || Math.random().toString(),
             title: item.title || "",
             url: item.link || "",
+            slug: createSlug(item.title || ""),
             summary: (item.contentSnippet || item.summary || "").substring(0, 280) + "...",
             category: source.cat || "General",
             source: source.name || "Unknown",

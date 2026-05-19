@@ -1,7 +1,12 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, setLogLevel } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, collection, query, where, onSnapshot, deleteDoc, serverTimestamp, Timestamp, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
+
+// Silence Firebase SDK logs on the server to prevent distracting gRPC connection error logs in Next.js terminal/overlay
+if (typeof window === 'undefined') {
+  setLogLevel('silent');
+}
 
 // Initialize Firebase SDK
 const app = initializeApp(firebaseConfig);
