@@ -1097,10 +1097,9 @@ export default function App({ initialNews = [] }: { initialNews?: NewsItem[] }) 
 
     return () => unsubscribe();
   }, [user]);
-
   // Fetch Real News Feeds using the unified high-performance server aggregator
-  const fetchAllFeeds = async (forceRefresh = false) => {
-    setLoading(true);
+  const fetchAllFeeds = async (forceRefresh = false, background = false) => {
+    if (!background) setLoading(true);
     
     // Attempt to load from localStorage cache for instant UI startup
     // DEEP RESET: If cache is older than 3 days, ignore it to force fresh data for AdSense
@@ -1119,7 +1118,7 @@ export default function App({ initialNews = [] }: { initialNews?: NewsItem[] }) 
             localStorage.removeItem('cachedNews');
           } else if (newsItems.length === 0) {
             setNewsItems(parsedCache.map((item: NewsItem) => ({...item, rnd: Math.random()})));
-            setLoading(false);
+            if (!background) setLoading(false);
           }
         } catch (e) { }
       }
@@ -1145,7 +1144,7 @@ export default function App({ initialNews = [] }: { initialNews?: NewsItem[] }) 
     } catch (e) {
       console.error("Unified fetch failed:", e);
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   };
 
@@ -1165,12 +1164,12 @@ export default function App({ initialNews = [] }: { initialNews?: NewsItem[] }) 
     if (initialNews.length > 0 && newsItems.length === initialNews.length) {
       setLastSeenId(initialNews[0].id);
       setLoading(false);
+      fetchAllFeeds(false, true); // Fetch in background to load real images/videos
       return;
     }
     // Trigger initial load immediately and when sources update
     fetchAllFeeds();
   }, [newsSources?.length]);
-
   // Background Update Checker (GamesPulse DNA)
   useEffect(() => {
     const checkUpdates = async () => {

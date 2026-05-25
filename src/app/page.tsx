@@ -19,10 +19,46 @@ function createSlug(text: string): string {
     .replace(/(^-|-$)/g, '');
 }
 
+const customParser = new Parser({
+  customFields: {
+    item: [
+      ['media:content', 'media:content', { keepArray: true }],
+      ['media:thumbnail', 'media:thumbnail'],
+      ['content:encoded', 'content:encoded'],
+      ['image', 'image'],
+      ['thumbnail', 'thumbnail'],
+      ['yt:videoId', 'yt:videoId']
+    ]
+  }
+});
+
+function extractImageUrl(item: any): string | null {
+  const contentEncoded = item["content:encoded"] || item.content || item.description || "";
+  if (item.enclosure?.url?.match(/\.(jpg|jpeg|png|webp|gif)/i)) return item.enclosure.url;
+  const mediaTags = ["media:content", "media:thumbnail", "image", "enclosure", "thumb"];
+  for (const tag of mediaTags) {
+    const content = item[tag];
+    if (content) {
+      if (Array.isArray(content)) {
+        const first = content.find((c: any) => (c.url || c.$?.url || (c.$ && c.$.url))?.match(/\.(jpg|jpeg|png|webp|gif)/i));
+        if (first) return first.url || first.$?.url || first.$.url;
+      }
+      if (content.url || content.$?.url || content.$.url) return content.url || content.$?.url || content.$.url;
+    }
+  }
+  const imgMatch = contentEncoded.match(/<img[^>]+(?:src|data-src)=["']([^"'> ]+)["']/i);
+  return imgMatch ? imgMatch[1] : null;
+}
+
+function extractVideoUrl(item: any): string | null {
+  const content = (item.content || item["content:encoded"] || item.description || "").toLowerCase();
+  const ytMatch = content.match(/https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+  return ytMatch ? `https://www.youtube.com/embed/${ytMatch[1]}` : null;
+}
+
 async function fallbackDirectParse(): Promise<any[]> {
   const articles: any[] = [];
   try {
-    const parser = new Parser();
     // Parse top 6 sources directly to keep server response fast
     const topSources = FEEDS.slice(0, 6);
     for (const source of topSources) {
@@ -38,9 +74,11 @@ async function fallbackDirectParse(): Promise<any[]> {
         if (res.ok) {
           let xml = await res.text();
           xml = xml.replace(/&(?!(?:[a-zA-Z0-9]+|#[0-9]+|#x[0-9a-fA-F]+);)/g, '&amp;');
-          const feed = await parser.parseString(xml);
+          const feed = await customParser.parseString(xml);
           (feed.items || []).slice(0, 6).forEach(item => {
             if (item.title) {
+              const image = extractImageUrl(item);
+              const video = extractVideoUrl(item);
               articles.push({
                 id: item.guid || item.link || Math.random().toString(),
                 title: item.title,
@@ -49,7 +87,8 @@ async function fallbackDirectParse(): Promise<any[]> {
                 summary: (item.contentSnippet || item.summary || "").substring(0, 280) + "...",
                 category: source.cat || "Generale",
                 source: source.name || "Unknown",
-                imageUrl: `https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&q=80&w=1600`,
+                imageUrl: image || `https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&q=80&w=1600`,
+                videoUrl: video || null,
                 time: item.pubDate ? new Date(item.pubDate).toLocaleTimeString() : new Date().toLocaleTimeString(),
                 timestamp: item.pubDate ? new Date(item.pubDate).getTime() : Date.now()
               });

@@ -1,7 +1,7 @@
 export const FEEDS = [
   { id: "si-001", url: "https://www.ansa.it/sito/ansait_rss.xml", cat: "Cronaca", name: "ANSA" },
   { id: "si-002", url: "https://www.tgcom24.mediaset.it/rss/homepage.xml", cat: "Cronaca", name: "TGCOM24" },
-  { id: "si-003", url: "https://www.adnkronos.com/rss/home", cat: "Cronaca", name: "Adnkronos" },
+  { id: "si-003", url: "https://www.adnkronos.com/rss.xml", cat: "Cronaca", name: "Adnkronos" },
   { id: "si-004", url: "https://news.google.com/rss/search?q=source:Reuters+World+News+when:24h&hl=en-US&gl=US&ceid=US:en", cat: "Mondo", name: "Reuters" },
   { id: "si-005", url: "https://feeds.bbci.co.uk/news/world/rss.xml", cat: "Mondo", name: "BBC News" },
   { id: "si-006", url: "https://www.lastampa.it/rss/torino.xml", cat: "Regioni", name: "La Stampa (Torino)" },
@@ -26,7 +26,7 @@ export const FEEDS = [
   // Tecnologia - IT
   { id: "si-025", url: "https://www.dday.it/rss", cat: "Tecnologia", name: "DDay.it" },
   { id: "si-026", url: "https://www.tomshw.it/rss/", cat: "Tecnologia", name: "Tom's Hardware" },
-  { id: "si-027", url: "https://www.wired.it/feed/", cat: "Tecnologia", name: "Wired IT" },
+  { id: "si-027", url: "https://www.wired.it/feed/rss", cat: "Tecnologia", name: "Wired IT" },
   { id: "si-028", url: "https://www.punto-informatico.it/feed/", cat: "Tecnologia", name: "Punto Informatico" },
   { id: "si-029", url: "https://leganerd.com/feed/", cat: "Tecnologia", name: "Lega Nerd" },
   { id: "si-030", url: "https://www.macitynet.it/feed/", cat: "Tecnologia", name: "Macitynet" },
